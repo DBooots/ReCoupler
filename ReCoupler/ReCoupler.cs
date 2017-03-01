@@ -15,42 +15,29 @@ namespace ReCoupler
         public Dictionary<ModuleDecouple, JointTracker> decouplersInvolved = new Dictionary<ModuleDecouple, JointTracker>();
 
         public const float connectRadius = 0.1f;
-        public const float connectAngle = 30;
+        public const float connectAngle = 91;
 
         private bool checkNextFrame = false;
         public bool started = true;
 
         new public void Start()
         {
+            destroyAllJoints();
             joints.Clear();
             decouplersInvolved.Clear();
             checkNextFrame = false;
 
-            if(!vessel.loaded)
+            if (!vessel.loaded || !HighLogic.LoadedSceneIsFlight)
             {
                 //log.debug("Not instantiating for " + vessel.vesselName);
                 started = false;
                 return;
             }
-            if (HighLogic.LoadedScene == GameScenes.FLIGHT)
-            {
-                log.debug("Start()");
-                GameEvents.onVesselPartCountChanged.Add(OnVesselPartCountChanged);
-                GameEvents.onVesselCreate.Add(OnVesselCreate);
-                GameEvents.onVesselGoOffRails.Add(OnVesselGoOffRails);
-                /*if (FlightGlobals.ready)
-                {
-                    log.debug("Generating in Start()");
-                    generateJoints();
-                }
-                else
-                {
-                    GameEvents.onFlightReady.Add(OnFlightReady);
-                    GameEvents.OnFlightGlobalsReady.Add(OnFlightGlobalsReady);
-                }*/
-            }
-            else
-                started = false;
+            log.debug("Start() " + vessel.vesselName + " : " + Planetarium.GetUniversalTime());
+            GameEvents.onVesselPartCountChanged.Add(OnVesselPartCountChanged);
+            GameEvents.onVesselCreate.Add(OnVesselCreate);
+            GameEvents.onVesselGoOffRails.Add(OnVesselGoOffRails);
+            generateJoints();
         }
 
         public void OnVesselGoOffRails(Vessel modifiedVessel)
@@ -58,35 +45,13 @@ namespace ReCoupler
             if (modifiedVessel != this.vessel)
                 return;
 
-            log.debug("OnVesselGoOffRails - Rebuilding - " + modifiedVessel.vesselName);
-            destroyAllJoints();
-            generateJoints();
-        }
-
-        /*private void OnFlightGlobalsReady(bool FGReady)
-        {
-            log.debug("Generating in OnFlightGlobalsReady()");
-            generateJoints();
-            GameEvents.onFlightReady.Remove(OnFlightReady);
-            GameEvents.OnFlightGlobalsReady.Remove(OnFlightGlobalsReady);
-        }
-
-        private void OnFlightReady()
-        {
-            if (FlightGlobals.ready)
+            log.debug("OnVesselGoOffRails: " + modifiedVessel.vesselName);
+            generateJoints();       // To get any new joints. Old ones still kept.
+            foreach (JointTracker jt in joints)
             {
-                log.debug("Generating in OnFlightReady()");
-                generateJoints();
-                GameEvents.onFlightReady.Remove(OnFlightReady);
-                GameEvents.OnFlightGlobalsReady.Remove(OnFlightGlobalsReady);
+                jt.createLink();
             }
-        }*/
-
-        /*protected override void OnAwake()
-        {
-            log.debug("OnAwake()");
-            base.OnAwake();
-        }*/
+        }
 
         public void OnDestroy()
         {
@@ -233,19 +198,14 @@ namespace ReCoupler
                 openNodes.Remove(eligibleNodes[fromNode]);
                 log.debug("Creating link between " + fromNode.owner.name + " and " + eligibleNodes[fromNode].owner.name + ".");
 
-                JointTracker newJT = new JointTracker(fromNode, eligibleNodes[fromNode]);//, !vessel.packed);
+                JointTracker newJT = new JointTracker(fromNode, eligibleNodes[fromNode], !vessel.packed);
 
-                if (newJT.joint != null)
+                joints.Add(newJT);
+
+                foreach (ModuleDecouple decoupler in newJT.decouplers)
                 {
-                    joints.Add(newJT);
-
-                    foreach (ModuleDecouple decoupler in newJT.decouplers)
-                    {
-                        decouplersInvolved.Add(decoupler, newJT);
-                    }
+                    decouplersInvolved.Add(decoupler, newJT);
                 }
-                else
-                    log.error("New joint was null!");
             }
         }
 
@@ -490,11 +450,17 @@ namespace ReCoupler
             this.parts = new List<Part> { parentNode.owner, childNode.owner };
             log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name);
             if (link)
-                this.joint = this.createLink();
+                this.createLink();
         }
 
         public ConfigurableJoint createLink()
         {
+            if (this.joint != null)
+            {
+                log.warning("This link already has a joint object.");
+                return this.joint;
+            }
+
             AttachNode parent = this.nodes[0];
             AttachNode child = this.nodes[1];
             Part parentPart = this.parts[0];
@@ -566,8 +532,10 @@ namespace ReCoupler
             newJoint.angularZLimit = angleSoftLimit;
             newJoint.highAngularXLimit = angleSoftLimit;
             newJoint.lowAngularXLimit = angleSoftLimit;
-            
-            return newJoint;
+
+            this.joint = newJoint;
+
+            return this.joint;
         }
 
         public void destroyLink()

@@ -43,12 +43,20 @@ namespace ReCoupler
             GameEvents.onEditorRedo.Remove(OnEditorUnRedo);
             GameEvents.onEditorUndo.Remove(OnEditorUnRedo);
             GameEvents.onEditorLoad.Remove(OnEditorLoad);
+            GameEvents.onEditorRestart.Add(OnEditorRestart);
+            GameEvents.onLevelWasLoaded.Add(OnLevelWasLoaded);
 
             //GameEvents.onEditorShipModified.Remove(OnEditorShipModified);
             showAllNodes();
         }
 
-        public void OnEditorRestoreState()
+        private void OnLevelWasLoaded(GameScenes data)
+        {
+            if (HighLogic.LoadedSceneIsEditor)
+                reConstruct();
+        }
+
+        private void OnEditorRestart()
         {
             reConstruct();
         }
@@ -149,7 +157,8 @@ namespace ReCoupler
 
         public void OnEditorPartEvent(ConstructionEventType constEvent, Part part)
         {
-            if (constEvent == ConstructionEventType.PartAttached || constEvent == ConstructionEventType.PartDetached)
+            if (constEvent == ConstructionEventType.PartAttached || constEvent == ConstructionEventType.PartDetached ||
+                constEvent == ConstructionEventType.PartOffset || constEvent == ConstructionEventType.PartRotated)
                 reConstruct();
 
             /*if (constEvent == ConstructionEventType.PartAttached)
@@ -190,6 +199,20 @@ namespace ReCoupler
                         showNode(node);
                 }
             }*/
+            else if (constEvent == ConstructionEventType.PartCopied)
+            {
+                foreach(AttachNode node in part.attachNodes)
+                {
+                    if (node.radius == 0.001f)
+                    {
+                        log.warning("A part with a hidden node was copied. This is a problem!");
+                        node.radius = 0.4f;
+                        node.nodeType = AttachNode.NodeType.Stack;
+
+                        ModuleAttachNodeHide hideModule = part.AddModule("ModuleAttachNodeHide") as ModuleAttachNodeHide;
+                    }
+                }
+            }
         }
 
         public void showAllNodes()
