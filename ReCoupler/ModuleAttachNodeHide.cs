@@ -5,7 +5,7 @@ using System.Text;
 
 namespace ReCoupler
 {
-    class ModuleAttachNodeHide : PartModule
+    public class ModuleAttachNodeHide : PartModule
     {
         public AttachNode node = null;
         public bool isHidden
@@ -15,11 +15,11 @@ namespace ReCoupler
                 return _isHidden;
             }
         }
-
+        
         private bool _isHidden = false;
         private bool awake = false;
-
-        protected float radius;
+        
+        public float radius;
         protected AttachNode.NodeType nodeType;
 
         Logger log = new Logger("ModuleAttachNodeHide: ");
@@ -38,19 +38,42 @@ namespace ReCoupler
         public void OnDestroy()
         {
             if (_isHidden)
-                this.show();
+            {
+                node.nodeType = this.nodeType;
+                node.radius = this.radius;
+            }
         }
 
-        public void Create(AttachNode node)
+        public void wasDuplicated()
         {
+            this.node = part.FindAttachNode(node.id);
+        }
+
+        public void EditorAwake()
+        {
+            if (!HighLogic.LoadedSceneIsEditor)
+                return;
             if (!awake)
             {
                 awake = true;
                 base.Awake();
-                this.node = node;
             }
-            else
-                log.warning("Was already awake!");
+            //else
+                //log.warning("Was already awake!");
+        }
+
+        public bool nodeFree()
+        {
+            bool free = true; ;
+            foreach(ModuleAttachNodeHide hidingModule in part.FindModulesImplementing<ModuleAttachNodeHide>())
+            {
+                if (hidingModule.node == this.node)
+                {
+                    free = false;
+                    break;
+                }
+            }
+            return free;
         }
 
         public void hide()
@@ -62,6 +85,8 @@ namespace ReCoupler
 
                 node.nodeType = AttachNode.NodeType.Dock;
                 node.radius = 0.001f;
+
+                _isHidden = true;
             }
             else
                 log.debug("Node was already hidden.");
@@ -69,10 +94,12 @@ namespace ReCoupler
 
         public void show()
         {
-            if (_isHidden)
+            if (_isHidden || !_isHidden)
             {
                 node.nodeType = this.nodeType;
                 node.radius = this.radius;
+
+                _isHidden = false;
             }
             else
                 log.debug("Node was not hidden.");
@@ -84,7 +111,18 @@ namespace ReCoupler
             {
                 this.show();
             }
-            this.node = node;
+            if (!nodeFree())
+            {
+                log.error("That attach node was already claimed by another Module.");
+                this.node = null;
+            }
+            if (part.attachNodes.Contains(node))
+                this.node = node;
+            else
+            {
+                this.node = null;
+                log.error("That attach node isn't on this part.");
+            }
         }
     }
 }
