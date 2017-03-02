@@ -55,6 +55,7 @@
   <ItemGroup>
     <Compile Include="EditorReCoupler.cs" />
     <Compile Include="Logger.cs" />
+    <Compile Include="ModuleAttachNodeHide.cs" />
     <Compile Include="ReCoupler.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
