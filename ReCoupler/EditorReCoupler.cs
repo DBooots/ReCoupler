@@ -137,7 +137,7 @@ namespace ReCoupler
                     hideNode(closestNode);
                     openNodes.Remove(closestNode);
 
-                    //PartSet.AddPartToSet(partNodes[i].owner.crossfeedPartSet.GetParts(), closestNode.owner, partNodes[i].owner.vessel);
+                    //ReCouplerManager.combineCrossfeedSets(closestNode.owner, partNodes[i].owner);
                 }
                 else
                     partNodesToAdd.Add(partNodes[i]);

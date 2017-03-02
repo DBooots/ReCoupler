@@ -201,17 +201,28 @@ namespace ReCoupler
                 JointTracker newJT = new JointTracker(fromNode, eligibleNodes[fromNode], !vessel.packed);
 
                 joints.Add(newJT);
-                /*if (!fromNode.owner.crossfeedPartSet.ContainsPart(eligibleNodes[fromNode].owner))
-                {
-                    PartSet.AddPartToSet(fromNode.owner.crossfeedPartSet.GetParts(), eligibleNodes[fromNode].owner, this.vessel);
 
-                }*/
+                combineCrossfeedSets(fromNode.owner, eligibleNodes[fromNode].owner);
 
                 foreach (ModuleDecouple decoupler in newJT.decouplers)
                 {
                     decouplersInvolved.Add(decoupler, newJT);
                 }
             }
+        }
+
+        public static void combineCrossfeedSets(Part parent, Part child)
+        {
+            if (parent.crossfeedPartSet.ContainsPart(child))
+                return;
+            log.debug("Combining Crossfeed Sets.");
+            HashSet<Part> partsToAdd = parent.crossfeedPartSet.GetParts();
+            partsToAdd.UnionWith(child.crossfeedPartSet.GetParts());
+
+            parent.crossfeedPartSet.RebuildParts(partsToAdd);
+            child.crossfeedPartSet.RebuildParts(partsToAdd);
+            parent.crossfeedPartSet.RebuildInPlace();
+            child.crossfeedPartSet.RebuildInPlace();
         }
 
         public void destroyAllJoints()
