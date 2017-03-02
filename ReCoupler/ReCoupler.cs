@@ -201,6 +201,11 @@ namespace ReCoupler
                 JointTracker newJT = new JointTracker(fromNode, eligibleNodes[fromNode], !vessel.packed);
 
                 joints.Add(newJT);
+                /*if (!fromNode.owner.crossfeedPartSet.ContainsPart(eligibleNodes[fromNode].owner))
+                {
+                    PartSet.AddPartToSet(fromNode.owner.crossfeedPartSet.GetParts(), eligibleNodes[fromNode].owner, this.vessel);
+
+                }*/
 
                 foreach (ModuleDecouple decoupler in newJT.decouplers)
                 {
