@@ -17,7 +17,8 @@ namespace ReCoupler
         public const float connectRadius = 0.1f;
         public const float connectAngle = 91;
 
-        private bool checkNextFrame = false;
+        private bool checkCoupleNextFrame = false;
+        private bool checkBreakNextFrame = false;
         public bool started = true;
 
         new public void Start()
@@ -25,7 +26,8 @@ namespace ReCoupler
             destroyAllJoints();
             joints.Clear();
             decouplersInvolved.Clear();
-            checkNextFrame = false;
+            checkCoupleNextFrame = false;
+            checkBreakNextFrame = false;
 
             if (!vessel.loaded || !HighLogic.LoadedSceneIsFlight)
             {
@@ -37,7 +39,47 @@ namespace ReCoupler
             GameEvents.onVesselPartCountChanged.Add(OnVesselPartCountChanged);
             GameEvents.onVesselCreate.Add(OnVesselCreate);
             GameEvents.onVesselGoOffRails.Add(OnVesselGoOffRails);
+            GameEvents.onJointBreak.Add(OnJointBreak);
             generateJoints();
+        }
+
+        private void OnJointBreak(EventReport data)
+        {
+            for (int i = 0; i < joints.Count; i++)
+            {
+                JointTracker jt = joints[i];
+                if (jt.parts[0] == data.origin || jt.parts[1] == data.origin)
+                {
+                    if (jt.joint == null)
+                    {
+                        jt.destroyLink();
+                        joints.Remove(jt);
+                    }
+                    else
+                    {
+                        checkBreakNextFrame = true;
+                        this.vessel.StartCoroutine(WaitAndCheckBreak(jt));
+                    }
+                    break;
+                }
+            }
+        }
+
+        IEnumerator WaitAndCheckBreak(JointTracker jt)
+        {
+            if (checkCoupleNextFrame == true)
+            {
+                log.debug("Checking next frame");
+                checkCoupleNextFrame = false;
+                yield return new WaitForFixedUpdate();
+            }
+            log.debug("Checking this frame");
+
+            if (jt.joint == null)
+            {
+                jt.destroyLink();
+                joints.Remove(jt);
+            }
         }
 
         public void OnVesselGoOffRails(Vessel modifiedVessel)
@@ -61,22 +103,23 @@ namespace ReCoupler
                 GameEvents.onVesselPartCountChanged.Remove(OnVesselPartCountChanged);
                 GameEvents.onVesselCreate.Remove(OnVesselCreate);
                 GameEvents.onVesselGoOffRails.Remove(OnVesselGoOffRails);
+                GameEvents.onJointBreak.Remove(OnJointBreak);
                 destroyAllJoints();
             }
         }
 
         private void OnVesselCreate(Vessel newVessel)
         {
-            checkNextFrame = true;
-            this.vessel.StartCoroutine(WaitAndCheck());
+            checkCoupleNextFrame = true;
+            this.vessel.StartCoroutine(WaitAndCheckCouple());
         }
 
-        IEnumerator WaitAndCheck()
+        IEnumerator WaitAndCheckCouple()
         {
-            if (checkNextFrame == true)
+            if (checkCoupleNextFrame == true)
             {
                 log.debug("Checking next frame");
-                checkNextFrame = false;
+                checkCoupleNextFrame = false;
                 yield return new WaitForFixedUpdate();
             }
             log.debug("Checking this frame");
@@ -99,12 +142,21 @@ namespace ReCoupler
                 }
             }
 
+            JointTracker jt;
+            bool combinedAny = false;
             for (int i = joints.Count - 1; i >= 0; i--)
             {
-                JointTracker jt = joints[i];
-                if(jt.parts[0]==null || jt.parts[1] == null)
+                jt = joints[i];
+                if (jt.parts[0] == null || jt.parts[1] == null)
                 {
                     log.debug("Removing a null joint.");
+                    jt.destroyLink();
+                    joints.Remove(jt);
+                    continue;
+                }
+                if (jt.joint == null)
+                {
+                    log.debug("A joint must have broken.");
                     jt.destroyLink();
                     joints.Remove(jt);
                     continue;
@@ -132,9 +184,10 @@ namespace ReCoupler
                     log.debug("Coupling " + couplePart.name + " to " + targetPart.name + ".");
 
                     CouplePart(couplePart, targetPart, coupleNode, targetNode);
-
-                    targetPart.vessel.currentStage = KSP.UI.Screens.StageManager.RecalculateVesselStaging(targetPart.vessel);
-                    vessel.currentStage = KSP.UI.Screens.StageManager.RecalculateVesselStaging(vessel);
+                    combinedAny = true;
+                    
+                    //targetPart.vessel.currentStage = KSP.UI.Screens.StageManager.RecalculateVesselStaging(targetPart.vessel);
+                    vessel.currentStage = KSP.UI.Screens.StageManager.RecalculateVesselStaging(vessel) + 1;
                 }
 
                 if (jt.parts[0].vessel != this.vessel && jt.parts[1].vessel != this.vessel)
@@ -143,6 +196,15 @@ namespace ReCoupler
                     jt.destroyLink();
                     joints.Remove(jt);
                     continue;
+                }
+            }
+
+            if (combinedAny)
+            {
+                for (int i = joints.Count - 1; i >= 0; i--)
+                {
+                    jt = joints[i];
+                    jt.combineCrossfeedSets();
                 }
             }
         }
@@ -202,27 +264,13 @@ namespace ReCoupler
 
                 joints.Add(newJT);
 
-                combineCrossfeedSets(fromNode.owner, eligibleNodes[fromNode].owner);
+                newJT.combineCrossfeedSets();
 
                 foreach (ModuleDecouple decoupler in newJT.decouplers)
                 {
                     decouplersInvolved.Add(decoupler, newJT);
                 }
             }
-        }
-
-        public static void combineCrossfeedSets(Part parent, Part child)
-        {
-            if (parent.crossfeedPartSet.ContainsPart(child))
-                return;
-            log.debug("Combining Crossfeed Sets.");
-            HashSet<Part> partsToAdd = parent.crossfeedPartSet.GetParts();
-            partsToAdd.UnionWith(child.crossfeedPartSet.GetParts());
-
-            parent.crossfeedPartSet.RebuildParts(partsToAdd);
-            child.crossfeedPartSet.RebuildParts(partsToAdd);
-            parent.crossfeedPartSet.RebuildInPlace();
-            child.crossfeedPartSet.RebuildInPlace();
         }
 
         public void destroyAllJoints()
@@ -236,7 +284,7 @@ namespace ReCoupler
 
         public static List<AttachNode> findOpenNodes(Vessel vessel)
         {
-            return findOpenNodes(vessel.parts);
+            return findOpenNodes(vessel.Parts);
         }
 
         public static List<AttachNode> findOpenNodes(List<Part> partList)
@@ -286,6 +334,12 @@ namespace ReCoupler
                     if (decoupled)
                         continue;
                 }
+                // On revert to launch/some loads, certain AttachNode.owner's were null.
+                // This doesn't make sense since they should be the part it is on.
+                // We'll just fix that so we don't get nullRefs.
+                if (part.attachNodes[i].owner == null)
+                    part.attachNodes[i].owner = part;
+
                 openNodes.Add(part.attachNodes[i]);
             }
             return openNodes;
@@ -411,153 +465,208 @@ namespace ReCoupler
                 "Couple {0} with {1}", srcPart.name, tgtPart.name);
             srcPart.Couple(tgtPart);
         }
-    }
 
-    public class JointTracker
-    {
-        public ConfigurableJoint joint = null;
-        public List<AttachNode> nodes;
-        public List<Part> parts;
 
-        Logger log;
-
-        private List<ModuleDecouple> cachedDecouplers = null;
-
-        public List<ModuleDecouple> decouplers
+        public class JointTracker
         {
-            get
+            public ConfigurableJoint joint = null;
+            public List<AttachNode> nodes;
+            public List<Part> parts;
+
+            Logger log;
+
+            private List<ModuleDecouple> cachedDecouplers = null;
+
+            public List<ModuleDecouple> decouplers
             {
-                if (cachedDecouplers == null)
+                get
                 {
-                    cachedDecouplers = new List<ModuleDecouple>();
-                    for (int i = 0; i < parts.Count; i++)
+                    if (cachedDecouplers == null)
                     {
-                        foreach (ModuleDecouple decoupler in parts[i].FindModulesImplementing<ModuleDecouple>())
+                        cachedDecouplers = new List<ModuleDecouple>();
+                        for (int i = 0; i < parts.Count; i++)
                         {
-                            if (decoupler.isOmniDecoupler || decoupler.ExplosiveNode == nodes[i])
-                                cachedDecouplers.Add(decoupler);
+                            foreach (ModuleDecouple decoupler in parts[i].FindModulesImplementing<ModuleDecouple>())
+                            {
+                                if (decoupler.isOmniDecoupler || decoupler.ExplosiveNode == nodes[i])
+                                    cachedDecouplers.Add(decoupler);
+                            }
                         }
                     }
+                    return cachedDecouplers;
                 }
-                return cachedDecouplers;
             }
-        }
 
-        /*public JointTracker(ConfigurableJoint joint, Part[] parts, AttachNode[] nodes)
-        {
-            this.joint = joint;
-            this.parts = parts;
-            this.nodes = nodes;
-        }*/
-
-        public JointTracker(ConfigurableJoint joint, AttachNode parentNode, AttachNode childNode, bool link = true)
-        {
-            this.joint = joint;
-            this.nodes = new List<AttachNode> { parentNode, childNode };
-            this.parts = new List<Part> { parentNode.owner, childNode.owner };
-            log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name);
-            if (link)
-                this.createLink();
-        }
-
-        public JointTracker(AttachNode parentNode, AttachNode childNode, bool link = true)
-        {
-            this.nodes = new List<AttachNode> { parentNode, childNode };
-            this.parts = new List<Part> { parentNode.owner, childNode.owner };
-            log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name);
-            if (link)
-                this.createLink();
-        }
-
-        public ConfigurableJoint createLink()
-        {
-            if (this.joint != null)
+            /*public JointTracker(ConfigurableJoint joint, Part[] parts, AttachNode[] nodes)
             {
-                log.warning("This link already has a joint object.");
+                this.joint = joint;
+                this.parts = parts;
+                this.nodes = nodes;
+            }*/
+
+            public JointTracker(ConfigurableJoint joint, AttachNode parentNode, AttachNode childNode, bool link = true)
+            {
+                this.joint = joint;
+                this.nodes = new List<AttachNode> { parentNode, childNode };
+                this.parts = new List<Part> { parentNode.owner, childNode.owner };
+                log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name);
+                if (link)
+                    this.createLink();
+                nodes[0].attachedPart = parts[1];
+                nodes[0].attachedPartId = parts[1].flightID;
+                nodes[1].attachedPart = parts[0];
+                nodes[1].attachedPartId = parts[0].flightID;
+                parts[0].CheckBodyLiftAttachment();
+                parts[1].CheckBodyLiftAttachment();
+            }
+
+            public JointTracker(AttachNode parentNode, AttachNode childNode, bool link = true)
+            {
+                this.nodes = new List<AttachNode> { parentNode, childNode };
+                this.parts = new List<Part> { parentNode.owner, childNode.owner };
+                log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name);
+                if (link)
+                    this.createLink();
+                nodes[0].attachedPart = parts[1];
+                nodes[0].attachedPartId = parts[1].flightID;
+                nodes[1].attachedPart = parts[0];
+                nodes[1].attachedPartId = parts[0].flightID;
+                parts[0].CheckBodyLiftAttachment();
+                parts[1].CheckBodyLiftAttachment();
+            }
+
+            public ConfigurableJoint createLink()
+            {
+                if (this.joint != null)
+                {
+                    log.warning("This link already has a joint object.");
+                    return this.joint;
+                }
+
+                AttachNode parent = this.nodes[0];
+                AttachNode child = this.nodes[1];
+                Part parentPart = this.parts[0];
+                Part childPart = this.parts[1];
+
+                log.debug("Creating joint between " + parentPart.name + " and " + childPart.name + ".");
+
+                if (parentPart.Rigidbody == null)
+                    log.error("parentPart body is null :o");
+                if (childPart.Rigidbody == null)
+                    log.error("childPart body is null :o");
+
+                ConfigurableJoint newJoint;
+
+                newJoint = childPart.gameObject.AddComponent<ConfigurableJoint>();
+                newJoint.connectedBody = parentPart.Rigidbody;
+                newJoint.anchor = Vector3.zero;                 // There's probably a better anchor point, like the attachNode...
+                newJoint.connectedAnchor = Vector3.zero;
+
+                newJoint.autoConfigureConnectedAnchor = false;  // Probably don't need.
+                newJoint.axis = Vector3.up;
+                newJoint.secondaryAxis = Vector3.left;
+                newJoint.enableCollision = false;               // Probably don't need.
+
+                newJoint.breakForce = Math.Min(parentPart.breakingForce, childPart.breakingForce);
+                newJoint.breakTorque = Math.Min(parentPart.breakingTorque, childPart.breakingTorque);
+
+                newJoint.angularXMotion = ConfigurableJointMotion.Limited;
+                newJoint.angularYMotion = ConfigurableJointMotion.Limited;
+                newJoint.angularZMotion = ConfigurableJointMotion.Limited;
+
+                JointDrive linearDrive = new JointDrive();
+                linearDrive.maximumForce = 1E20f;
+                linearDrive.positionDamper = 0;
+                linearDrive.positionSpring = 1E20f;
+                newJoint.xDrive = linearDrive;
+                newJoint.yDrive = linearDrive;
+                newJoint.zDrive = linearDrive;
+
+                newJoint.projectionDistance = 0.1f;
+                newJoint.projectionAngle = 180;
+                newJoint.projectionMode = JointProjectionMode.None;
+
+                newJoint.rotationDriveMode = RotationDriveMode.XYAndZ;
+                newJoint.swapBodies = false;
+                newJoint.targetAngularVelocity = Vector3.zero;
+                newJoint.targetPosition = Vector3.zero;
+                newJoint.targetVelocity = Vector3.zero;
+                newJoint.targetRotation = new Quaternion(0, 0, 0, 1);
+
+                JointDrive angularDrive = new JointDrive();
+                angularDrive.maximumForce = 1E20f;
+                angularDrive.positionSpring = 60000;
+                angularDrive.positionDamper = 0;
+                newJoint.angularXDrive = angularDrive;
+                newJoint.angularYZDrive = angularDrive;
+
+                SoftJointLimitSpring zeroSpring = new SoftJointLimitSpring();
+                zeroSpring.spring = 0;
+                zeroSpring.damper = 0;
+                newJoint.angularXLimitSpring = zeroSpring;
+                newJoint.angularYZLimitSpring = zeroSpring;
+
+                SoftJointLimit angleSoftLimit = new SoftJointLimit();
+                angleSoftLimit.bounciness = 0;
+                angleSoftLimit.contactDistance = 0;
+                angleSoftLimit.limit = 177;
+                newJoint.angularYLimit = angleSoftLimit;
+                newJoint.angularZLimit = angleSoftLimit;
+                newJoint.highAngularXLimit = angleSoftLimit;
+                newJoint.lowAngularXLimit = angleSoftLimit;
+
+                this.joint = newJoint;
+
                 return this.joint;
             }
 
-            AttachNode parent = this.nodes[0];
-            AttachNode child = this.nodes[1];
-            Part parentPart = this.parts[0];
-            Part childPart = this.parts[1];
+            public static void combineCrossfeedSets(Part parent, Part child)
+            {
+                if (parent.crossfeedPartSet == null)
+                    return;
+                if (parent.crossfeedPartSet.ContainsPart(child))
+                    return;
+                //log.debug("Combining Crossfeed Sets.");
+                HashSet<Part> partsToAdd = parent.crossfeedPartSet.GetParts();
+                partsToAdd.UnionWith(child.crossfeedPartSet.GetParts());
 
-            log.debug("Creating joint between " + parentPart.name + " and " + childPart.name + ".");
+                parent.crossfeedPartSet.RebuildParts(partsToAdd);
+                child.crossfeedPartSet.RebuildParts(partsToAdd);
+                parent.crossfeedPartSet.RebuildInPlace();
+                child.crossfeedPartSet.RebuildInPlace();
+            }
 
-            if (parentPart.Rigidbody == null)
-                log.error("parentPart body is null :o");
-            if (childPart.Rigidbody == null)
-                log.error("childPart body is null :o");
-            
-            ConfigurableJoint newJoint;
-            
-            newJoint = childPart.gameObject.AddComponent<ConfigurableJoint>();
-            newJoint.connectedBody = parentPart.Rigidbody;
-            newJoint.anchor = Vector3.zero;                 // There's probably a better anchor point, like the attachNode...
-            newJoint.connectedAnchor = Vector3.zero;
+            public void combineCrossfeedSets()
+            {
+                if (parts[0].crossfeedPartSet == null)
+                    return;
+                if (parts[0].crossfeedPartSet.ContainsPart(parts[1]))
+                    return;
+                log.debug("Part Xfeed: " + parts[0].fuelCrossFeed + " node: " + nodes[0].ResourceXFeed);
+                log.debug("Part Xfeed: " + parts[1].fuelCrossFeed + " node: " + nodes[1].ResourceXFeed);
+                log.debug("Combining Crossfeed Sets.");
+                combineCrossfeedSets(this.parts[0], this.parts[1]);
+            }
 
-            newJoint.autoConfigureConnectedAnchor = false;  // Probably don't need.
-            newJoint.axis = Vector3.up;
-            newJoint.secondaryAxis = Vector3.left;
-            newJoint.enableCollision = false;               // Probably don't need.
-
-            newJoint.breakForce = Math.Min(parentPart.breakingForce, childPart.breakingForce);
-            newJoint.breakTorque = Math.Min(parentPart.breakingTorque, childPart.breakingTorque);
-
-            newJoint.angularXMotion = ConfigurableJointMotion.Limited;
-            newJoint.angularYMotion = ConfigurableJointMotion.Limited;
-            newJoint.angularZMotion = ConfigurableJointMotion.Limited;
-
-            JointDrive linearDrive = new JointDrive();
-            linearDrive.maximumForce = 1E20f;
-            linearDrive.positionDamper = 0;
-            linearDrive.positionSpring = 1E20f;
-            newJoint.xDrive = linearDrive;
-            newJoint.yDrive = linearDrive;
-            newJoint.zDrive = linearDrive;
-
-            newJoint.projectionDistance = 0.1f;
-            newJoint.projectionAngle = 180;
-            newJoint.projectionMode = JointProjectionMode.None;
-
-            newJoint.rotationDriveMode = RotationDriveMode.XYAndZ;
-            newJoint.swapBodies = false;
-            newJoint.targetAngularVelocity = Vector3.zero;
-            newJoint.targetPosition = Vector3.zero;
-            newJoint.targetVelocity = Vector3.zero;
-            newJoint.targetRotation = new Quaternion(0, 0, 0, 1);
-
-            JointDrive angularDrive = new JointDrive();
-            angularDrive.maximumForce = 1E20f;
-            angularDrive.positionSpring = 60000;
-            angularDrive.positionDamper = 0;
-            newJoint.angularXDrive = angularDrive;
-            newJoint.angularYZDrive = angularDrive;
-
-            SoftJointLimitSpring zeroSpring = new SoftJointLimitSpring();
-            zeroSpring.spring = 0;
-            zeroSpring.damper = 0;
-            newJoint.angularXLimitSpring = zeroSpring;
-            newJoint.angularYZLimitSpring = zeroSpring;
-
-            SoftJointLimit angleSoftLimit = new SoftJointLimit();
-            angleSoftLimit.bounciness = 0;
-            angleSoftLimit.contactDistance = 0;
-            angleSoftLimit.limit = 177;
-            newJoint.angularYLimit = angleSoftLimit;
-            newJoint.angularZLimit = angleSoftLimit;
-            newJoint.highAngularXLimit = angleSoftLimit;
-            newJoint.lowAngularXLimit = angleSoftLimit;
-
-            this.joint = newJoint;
-
-            return this.joint;
-        }
-
-        public void destroyLink()
-        {
-            if (joint != null)
-                GameObject.Destroy(joint);
+            public void destroyLink()
+            {
+                if (joint != null)
+                    GameObject.Destroy(joint);
+                if (nodes[0] != null)
+                {
+                    nodes[0].attachedPart = null;
+                    nodes[0].attachedPartId = 0;
+                }
+                if (nodes[1] != null)
+                {
+                    nodes[1].attachedPart = null;
+                    nodes[1].attachedPartId = 0;
+                }
+                if (parts[0] != null)
+                    parts[0].CheckBodyLiftAttachment();
+                if (parts[1] != null)
+                    parts[1].CheckBodyLiftAttachment();
+            }
         }
     }
 }
