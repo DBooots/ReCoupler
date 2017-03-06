@@ -183,7 +183,7 @@ namespace ReCoupler
 
                     log.debug("Coupling " + couplePart.name + " to " + targetPart.name + ".");
 
-                    CouplePart(couplePart, targetPart, coupleNode, targetNode);
+                    CoupleParts(coupleNode, targetNode);
                     combinedAny = true;
                     
                     //targetPart.vessel.currentStage = KSP.UI.Screens.StageManager.RecalculateVesselStaging(targetPart.vessel);
@@ -397,73 +397,41 @@ namespace ReCoupler
             return closestNode;
         }
 
-        // Adapted from KIS by IgorZ and KospY
-        // <summary>Couples parts of different vessels together.</summary>
-        // <remarks>
-        // When parts are compatible docking ports thet are docked instead of coupling. Docking ports
-        // handle own logic on docking.
-        // <para>
-        // Parts will be coupled even if source and/or target attach node is incorrect. In such a case
-        // the parts will be logically and physically joint into one vessel but normal parts interaction
-        // logic may get broken (e.g. fuel flow).
-        // </para>
-        // </remarks>
-        // <param name="srcPart">Source part to couple.</param>
-        // <param name="tgtPart">New parent of the source part.</param>
-        // <param name="srcAttachNodeId">
-        // Attach node id on the source part. Can be <c>null</c> for the compatibility but it's an
-        // erroneous situation and it will be logged.
-        // </param>
-        // <param name="tgtAttachNode">
-        // Attach node on the parent to couple thru. Can be <c>null</c> for the compatibility but it's an
-        // erroneous situation and it will be logged.
-        // </param>
-        public static void CouplePart(Part srcPart, Part tgtPart,
-                                      AttachNode srcAttachNode = null,
-                                      AttachNode tgtAttachNode = null)
+        // Adapted from KISv1 by IgorZ
+        public static void CoupleParts(AttachNode sourceNode, AttachNode targetNode)
         {
-            // Node links.
-            if (srcAttachNode.id != null)
+            var srcPart = sourceNode.owner;
+            var srcVessel = srcPart.vessel;
+            var trgPart = targetNode.owner;
+            var trgVessel = trgPart.vessel;
+
+            var vesselInfo = new DockedVesselInfo();
+            vesselInfo.name = srcVessel.vesselName;
+            vesselInfo.vesselType = srcVessel.vesselType;
+            vesselInfo.rootPartUId = srcVessel.rootPart.flightID;
+
+            GameEvents.onActiveJointNeedUpdate.Fire(srcVessel);
+            GameEvents.onActiveJointNeedUpdate.Fire(trgVessel);
+            sourceNode.attachedPart = trgPart;
+            targetNode.attachedPart = srcPart;
+            srcPart.attachMode = AttachModes.STACK;  // All KAS links are expected to be STACK.
+            srcPart.Couple(trgPart);
+            // Depending on how active vessel has updated do either force active or make active. Note, that
+            // active vessel can be EVA kerbal, in which case nothing needs to be adjusted.    
+            // FYI: This logic was taken from ModuleDockingNode.DockToVessel.
+            if (srcVessel == FlightGlobals.ActiveVessel)
             {
-                if (srcAttachNode.id == "srfAttach")
-                {
-                    Debug.LogFormat("Attach type: {0} | ID : {1}",
-                                    srcPart.srfAttachNode.nodeType, srcPart.srfAttachNode.id);
-                    srcPart.attachMode = AttachModes.SRF_ATTACH;
-                    srcPart.srfAttachNode.attachedPart = tgtPart;
-                    srcPart.srfAttachNode.attachedPartId = tgtPart.flightID;
-                }
-                else
-                {
-                    if (srcAttachNode != null)
-                    {
-                        Debug.LogFormat("Attach type : {0} | ID : {1}",
-                                        srcPart.srfAttachNode.nodeType, srcAttachNode.id);
-                        srcPart.attachMode = AttachModes.STACK;
-                        srcAttachNode.attachedPart = tgtPart;
-                        srcAttachNode.attachedPartId = tgtPart.flightID;
-                        if (tgtAttachNode != null)
-                        {
-                            tgtAttachNode.attachedPart = srcPart;
-                        }
-                        else
-                        {
-                            Debug.LogWarning("Target node is null");
-                        }
-                    }
-                    else
-                    {
-                        Debug.LogErrorFormat("Source attach node not found: {0}", srcAttachNode.id);
-                    }
-                }
+                FlightGlobals.ForceSetActiveVessel(sourceNode.owner.vessel);  // Use actual vessel.
+                FlightInputHandler.SetNeutralControls();
             }
-            else
+            else if (sourceNode.owner.vessel == FlightGlobals.ActiveVessel)
             {
-                Debug.LogWarning("Missing source attach node !");
+                sourceNode.owner.vessel.MakeActive();
+                FlightInputHandler.SetNeutralControls();
             }
-            Debug.LogFormat(
-                "Couple {0} with {1}", srcPart.name, tgtPart.name);
-            srcPart.Couple(tgtPart);
+            GameEvents.onVesselWasModified.Fire(sourceNode.owner.vessel);
+
+            //return vesselInfo;
         }
 
 
