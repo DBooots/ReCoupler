@@ -17,8 +17,9 @@ namespace ReCoupler
         public const float connectRadius = 0.1f;
         public const float connectAngle = 91;
 
-        private bool checkCoupleNextFrame = false;
-        private bool checkBreakNextFrame = false;
+        protected bool checkCoupleNextFrame = false;
+        protected bool checkBreakNextFrame = false;
+        protected List<int[]> storedData = new List<int[]>();
         public bool started = true;
 
         new public void Start()
@@ -40,7 +41,75 @@ namespace ReCoupler
             GameEvents.onVesselCreate.Add(OnVesselCreate);
             GameEvents.onVesselGoOffRails.Add(OnVesselGoOffRails);
             GameEvents.onJointBreak.Add(OnJointBreak);
+
+            List<Part> parts = vessel.Parts;
+            for (int i = 0; i<storedData.Count; i++)
+            {
+                parts[storedData[i][0]].attachNodes[storedData[i][1]].attachedPart = null;
+            }
+
             generateJoints();
+        }
+
+        protected override void OnSave(ConfigNode node)
+        {
+            base.OnSave(node);
+            
+            if (joints.Count > 0)
+            {
+                log.debug("OnSave: " + vessel.vesselName);
+                List<Part> parts = vessel.Parts;
+                log.debug("Saving " + joints.Count + " nodes.");
+
+                for (int i = 0; i < joints.Count; i++)
+                {
+                    ConfigNode jointTrackerNode = node.AddNode("RECOUPLER");
+                    jointTrackerNode.AddValue("partID", parts.IndexOf(joints[i].parts[0]));
+                    jointTrackerNode.AddValue("nodeID", joints[i].parts[0].attachNodes.IndexOf(joints[i].nodes[0]));
+                    jointTrackerNode.AddValue("partID", parts.IndexOf(joints[i].parts[1]));
+                    jointTrackerNode.AddValue("nodeID", joints[i].parts[1].attachNodes.IndexOf(joints[i].nodes[1]));
+                }
+            }
+            else if (storedData.Count > 0)
+            {
+                log.debug("OnSave: " + vessel.vesselName);
+                log.debug("Saving " + storedData.Count + " nodes.");
+
+                for (int i = 0; i < storedData.Count; i += 2)
+                {
+                    ConfigNode jointTrackerNode = node.AddNode("RECOUPLER");
+                    jointTrackerNode.AddValue("partID", storedData[i][0]);
+                    jointTrackerNode.AddValue("nodeID", storedData[i][1]);
+                    jointTrackerNode.AddValue("partID", storedData[i + 1][0]);
+                    jointTrackerNode.AddValue("nodeID", storedData[i + 1][1]);
+                }
+            }
+        }
+
+        protected override void OnLoad(ConfigNode node)
+        {
+            base.OnLoad(node);
+
+            foreach (ConfigNode jointTrackerNode in node.GetNodes("RECOUPLER"))
+            {
+                string[] parse = jointTrackerNode.GetValues("partID");
+                int[] partsID = new int[2];
+                if (!(int.TryParse(parse[0], out partsID[0]) && (int.TryParse(parse[1], out partsID[1]))))
+                {
+                    log.error("Parsing failed");
+                    continue;
+                }
+                parse = jointTrackerNode.GetValues("nodeID");
+                int[] nodesID = new int[2];
+                if (!(int.TryParse(parse[0], out nodesID[0]) && (int.TryParse(parse[1], out nodesID[1]))))
+                {
+                    log.error("Parsing failed");
+                    continue;
+                }
+
+                storedData.Add(new int[2] { partsID[0], nodesID[0] });
+                storedData.Add(new int[2] { partsID[1], nodesID[1] });
+            }
         }
 
         private void OnJointBreak(EventReport data)
@@ -67,10 +136,10 @@ namespace ReCoupler
 
         IEnumerator WaitAndCheckBreak(JointTracker jt)
         {
-            if (checkCoupleNextFrame == true)
+            if (checkBreakNextFrame == true)
             {
                 log.debug("Checking next frame");
-                checkCoupleNextFrame = false;
+                checkBreakNextFrame = false;
                 yield return new WaitForFixedUpdate();
             }
             log.debug("Checking this frame");
@@ -422,12 +491,12 @@ namespace ReCoupler
             if (srcVessel == FlightGlobals.ActiveVessel)
             {
                 FlightGlobals.ForceSetActiveVessel(sourceNode.owner.vessel);  // Use actual vessel.
-                FlightInputHandler.SetNeutralControls();
+                //FlightInputHandler.SetNeutralControls();
             }
             else if (sourceNode.owner.vessel == FlightGlobals.ActiveVessel)
             {
                 sourceNode.owner.vessel.MakeActive();
-                FlightInputHandler.SetNeutralControls();
+                //FlightInputHandler.SetNeutralControls();
             }
             GameEvents.onVesselWasModified.Fire(sourceNode.owner.vessel);
 
@@ -480,27 +549,27 @@ namespace ReCoupler
                 log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name);
                 if (link)
                     this.createLink();
-                nodes[0].attachedPart = parts[1];
-                nodes[0].attachedPartId = parts[1].flightID;
-                nodes[1].attachedPart = parts[0];
-                nodes[1].attachedPartId = parts[0].flightID;
-                parts[0].CheckBodyLiftAttachment();
-                parts[1].CheckBodyLiftAttachment();
+                this.setNodeAero();
             }
 
             public JointTracker(AttachNode parentNode, AttachNode childNode, bool link = true)
             {
                 this.nodes = new List<AttachNode> { parentNode, childNode };
                 this.parts = new List<Part> { parentNode.owner, childNode.owner };
-                log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name);
+                log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name + " ");
                 if (link)
                     this.createLink();
+                this.setNodeAero();
+            }
+
+            public void setNodeAero()
+            {
+                uint[] oldIDs = new uint[] { nodes[0].attachedPartId, nodes[1].attachedPartId };
+                log.debug(oldIDs[0] + " " + oldIDs[1] + ": " + parts[0].attachNodes.Count);
                 nodes[0].attachedPart = parts[1];
                 nodes[0].attachedPartId = parts[1].flightID;
                 nodes[1].attachedPart = parts[0];
                 nodes[1].attachedPartId = parts[0].flightID;
-                parts[0].CheckBodyLiftAttachment();
-                parts[1].CheckBodyLiftAttachment();
             }
 
             public ConfigurableJoint createLink()
@@ -535,8 +604,8 @@ namespace ReCoupler
                 newJoint.secondaryAxis = Vector3.left;
                 newJoint.enableCollision = false;               // Probably don't need.
 
-                newJoint.breakForce = Math.Min(parentPart.breakingForce, childPart.breakingForce);
-                newJoint.breakTorque = Math.Min(parentPart.breakingTorque, childPart.breakingTorque);
+                newJoint.breakForce = float.PositiveInfinity;   //Math.Min(parentPart.breakingForce, childPart.breakingForce);
+                newJoint.breakTorque = float.PositiveInfinity;  //Math.Min(parentPart.breakingTorque, childPart.breakingTorque);
 
                 newJoint.angularXMotion = ConfigurableJointMotion.Limited;
                 newJoint.angularYMotion = ConfigurableJointMotion.Limited;
@@ -584,6 +653,7 @@ namespace ReCoupler
                 newJoint.lowAngularXLimit = angleSoftLimit;
 
                 this.joint = newJoint;
+                this.setNodeAero();
 
                 return this.joint;
             }
@@ -594,6 +664,7 @@ namespace ReCoupler
                     return;
                 if (parent.crossfeedPartSet.ContainsPart(child))
                     return;
+
                 //log.debug("Combining Crossfeed Sets.");
                 HashSet<Part> partsToAdd = parent.crossfeedPartSet.GetParts();
                 partsToAdd.UnionWith(child.crossfeedPartSet.GetParts());
@@ -618,22 +689,15 @@ namespace ReCoupler
 
             public void destroyLink()
             {
+                log.debug("Destroying a link.");
                 if (joint != null)
                     GameObject.Destroy(joint);
-                if (nodes[0] != null)
-                {
-                    nodes[0].attachedPart = null;
-                    nodes[0].attachedPartId = 0;
-                }
-                if (nodes[1] != null)
-                {
-                    nodes[1].attachedPart = null;
-                    nodes[1].attachedPartId = 0;
-                }
+
                 if (parts[0] != null)
-                    parts[0].CheckBodyLiftAttachment();
+                    nodes[0].attachedPart = null;
+
                 if (parts[1] != null)
-                    parts[1].CheckBodyLiftAttachment();
+                    nodes[1].attachedPart = null;
             }
         }
     }
