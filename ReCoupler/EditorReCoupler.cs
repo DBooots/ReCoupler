@@ -18,6 +18,9 @@ namespace ReCoupler
         public Dictionary<AttachNode, AttachNode> nodePairs = new Dictionary<AttachNode, AttachNode>();
         public List<AttachNode> openNodes = new List<AttachNode>();
 
+        public float connectRadius = ReCouplerManager.connectRadius_default;
+        public float connectAngle = ReCouplerManager.connectAngle_default;
+
         void Awake()
         {
             if (instance)
@@ -27,6 +30,8 @@ namespace ReCoupler
 
         void Start()
         {
+            ReCouplerManager.LoadSettings(out connectRadius, out connectAngle);
+
             log.debug("Registering GameEvents.");
             GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
             GameEvents.onEditorRedo.Add(OnEditorUnRedo);
@@ -128,7 +133,7 @@ namespace ReCoupler
             //foreach (AttachNode node in partNodes)
             for (int i = 0; i < partNodes.Count; i++)
             {
-                AttachNode closestNode = ReCouplerManager.getEligiblePairing(partNodes[i], openNodes);
+                AttachNode closestNode = ReCouplerManager.getEligiblePairing(partNodes[i], openNodes, connectRadius, connectAngle);
                 if (closestNode != null)
                 {
                     nodePairs.Add(partNodes[i], closestNode);

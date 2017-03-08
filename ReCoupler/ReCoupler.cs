@@ -14,16 +14,22 @@ namespace ReCoupler
         public List<JointTracker> joints = new List<JointTracker>();
         public Dictionary<ModuleDecouple, JointTracker> decouplersInvolved = new Dictionary<ModuleDecouple, JointTracker>();
 
-        public const float connectRadius = 0.1f;
-        public const float connectAngle = 91;
+        public const float connectRadius_default = 0.1f;
+        public const float connectAngle_default = 91;
+        protected internal const string configURL = "ReCoupler/ReCouplerSettings/ReCouplerSettings";
+
+        public float connectRadius = connectRadius_default;
+        public float connectAngle = connectAngle_default;
 
         protected bool checkCoupleNextFrame = false;
         protected bool checkBreakNextFrame = false;
         protected List<int[]> storedData = new List<int[]>();
         public bool started = true;
-
+        
         new public void Start()
         {
+            LoadSettings(out connectRadius, out connectAngle);
+
             destroyAllJoints();
             joints.Clear();
             decouplersInvolved.Clear();
@@ -109,6 +115,41 @@ namespace ReCoupler
 
                 storedData.Add(new int[2] { partsID[0], nodesID[0] });
                 storedData.Add(new int[2] { partsID[1], nodesID[1] });
+            }
+        }
+
+        public static void LoadSettings(out float loadedRadius, out float loadedAngle)
+        {
+            var cfgs = GameDatabase.Instance.GetConfigs("ReCouplerSettings");
+            if (cfgs.Length > 0)
+            {
+                if (!float.TryParse(cfgs[0].config.GetValue("connectRadius"), out loadedRadius))
+                    loadedRadius = connectRadius_default;
+
+                if (!float.TryParse(cfgs[0].config.GetValue("connectAngle"), out loadedAngle))
+                    loadedAngle = connectAngle_default;
+                
+                if (!cfgs[0].url.Equals(configURL))
+                {
+                    for (int i = 0; i < cfgs.Length; i++)
+                    {
+                        if (cfgs[i].url.Equals(configURL))
+                        {
+                            if (!float.TryParse(cfgs[i].config.GetValue("connectRadius"), out loadedRadius))
+                                loadedRadius = connectRadius_default;
+
+                            if (!float.TryParse(cfgs[i].config.GetValue("connectAngle"), out loadedAngle))
+                                loadedAngle = connectAngle_default;
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                loadedRadius = connectRadius_default;
+                loadedAngle = connectAngle_default;
+                log.warning("Couldn't find the settings, using the defaults.");
             }
         }
 
@@ -322,7 +363,7 @@ namespace ReCoupler
             }
 
             log.debug(openNodes.Count + " open nodes.");
-            Dictionary<AttachNode, AttachNode> eligibleNodes = getEligibleNodes(openNodes);
+            Dictionary<AttachNode, AttachNode> eligibleNodes = getEligibleNodes(openNodes, connectRadius, connectAngle);
             foreach (AttachNode fromNode in eligibleNodes.Keys)
             {
                 openNodes.Remove(fromNode);
@@ -414,7 +455,7 @@ namespace ReCoupler
             return openNodes;
         }
 
-        public static Dictionary<AttachNode, AttachNode> getEligibleNodes(List<AttachNode> nodes, float radius = connectRadius)
+        public static Dictionary<AttachNode, AttachNode> getEligibleNodes(List<AttachNode> nodes, float radius = connectRadius_default, float angle = connectAngle_default)
         {
             Dictionary<AttachNode, AttachNode> eligiblePairs = new Dictionary<AttachNode, AttachNode>();
             for (int i = 0; i < nodes.Count - 1; i++)
@@ -425,7 +466,7 @@ namespace ReCoupler
                     continue;
                 }
 
-                AttachNode closestNode = getEligiblePairing(nodes[i], nodes.GetRange(i + 1, nodes.Count - (i + 1)), radius);
+                AttachNode closestNode = getEligiblePairing(nodes[i], nodes.GetRange(i + 1, nodes.Count - (i + 1)), radius, angle);
 
                 if (closestNode != null)
                 {
@@ -435,7 +476,7 @@ namespace ReCoupler
             return eligiblePairs;
         }
 
-        public static AttachNode getEligiblePairing(AttachNode node, List<AttachNode> checkNodes, float radius = connectRadius)
+        public static AttachNode getEligiblePairing(AttachNode node, List<AttachNode> checkNodes, float radius = connectRadius_default, float angle = connectAngle_default)
         {
             float closestDist = radius;
             AttachNode closestNode = null;
@@ -451,14 +492,14 @@ namespace ReCoupler
                     Part.PartToVesselSpaceDir(checkNodes[j].orientation, checkNodes[j].owner, checkNodes[j].owner.vessel, PartSpaceMode.Pristine));*/
                 float dist = ((node.owner.transform.rotation * node.position + node.owner.transform.position) -
                     (checkNodes[j].owner.transform.rotation * checkNodes[j].position + checkNodes[j].owner.transform.position)).magnitude;
-                float angle = Vector3.Angle(node.owner.transform.rotation * node.orientation, checkNodes[j].owner.transform.rotation * checkNodes[j].orientation);
+                float angleBtwn = Vector3.Angle(node.owner.transform.rotation * node.orientation, checkNodes[j].owner.transform.rotation * checkNodes[j].orientation);
 
                 //log.debug(node.owner.name + "/" + checkNodes[j].owner.name + ": " + dist + "m, at " + angle + " deg.");
 
-                if (dist <= closestDist && Math.Abs(angle - 180) <= connectAngle)
+                if (dist <= closestDist && Math.Abs(angleBtwn - 180) <= angle)
                 // but at least closer than the min radius because of the initialization of closestDist
                 {
-                    log.debug(node.owner.name + "/" + checkNodes[j].owner.name + ": " + dist + "m, at " + angle + " deg.");
+                    log.debug(node.owner.name + "/" + checkNodes[j].owner.name + ": " + dist + "m, at " + angleBtwn + " deg.");
                     closestNode = checkNodes[j];
                 }
             }
