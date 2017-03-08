@@ -3,3 +3,4 @@ ReCoupler/bin/Debug/*
 ReCoupler/obj/*
 !ReCoupler.dll
 .vs/ReCoupler/v14/.suo
+*.zip
