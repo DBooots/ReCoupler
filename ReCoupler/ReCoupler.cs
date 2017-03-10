@@ -516,6 +516,8 @@ namespace ReCoupler
             {
                 if (node.owner == checkNodes[j].owner)
                     continue; // Nodes on the same Part are not eligible.
+                if (node.owner.parent == checkNodes[j].owner || checkNodes[j].owner.parent == node.owner)
+                    continue; // Parent-child relationships don't need doubling up.
 
                 /*float dist = (Part.PartToVesselSpacePos(node.position, node.owner, node.owner.vessel, PartSpaceMode.Pristine) -
                     Part.PartToVesselSpacePos(checkNodes[j].position, checkNodes[j].owner, checkNodes[j].owner.vessel, PartSpaceMode.Pristine)).magnitude;
