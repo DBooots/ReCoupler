@@ -438,13 +438,13 @@ namespace ReCoupler
 
                 if (HighLogic.LoadedScene == GameScenes.FLIGHT)
                 {
-                    bool decoupled = false;
+                    bool doNotJoint = false;
 
                     foreach (ModuleDecouple decoupler in part.FindModulesImplementing<ModuleDecouple>())
                     {
                         if (decoupler.isDecoupled && (part.attachNodes[i] == decoupler.ExplosiveNode || decoupler.isOmniDecoupler))
                         {
-                            decoupled = true;
+                            doNotJoint = true;
                             break;
                         }
                     }
@@ -458,12 +458,21 @@ namespace ReCoupler
                         if (dockingNode.referenceNode == part.attachNodes[i])
                         {
                             if (dockingNode.otherNode != null)
-                                decoupled = true;
+                                doNotJoint = true;
                             break;
                         }
                     }
 
-                    if (decoupled)
+                    foreach (ModuleCargoBay cargoBay in part.FindModulesImplementing<ModuleCargoBay>())
+                    {
+                        if (cargoBay.nodeInnerForeID == part.attachNodes[i].id || cargoBay.nodeInnerAftID == part.attachNodes[i].id)
+                        {
+                            doNotJoint = true;
+                            break;
+                        }
+                    }
+
+                    if (doNotJoint)
                         continue;
                 }
                 // On revert to launch/some loads, certain AttachNode.owner's were null.
