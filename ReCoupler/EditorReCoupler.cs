@@ -133,6 +133,18 @@ namespace ReCoupler
             //foreach (AttachNode node in partNodes)
             for (int i = 0; i < partNodes.Count; i++)
             {
+                bool doNotJoin = false;
+                foreach (ModuleCargoBay cargoBay in part.FindModulesImplementing<ModuleCargoBay>())
+                {
+                    if (cargoBay.nodeInnerForeID == partNodes[i].id || cargoBay.nodeInnerAftID == partNodes[i].id)
+                    {
+                        doNotJoin = true;
+                        break;
+                    }
+                }
+                if (doNotJoin)
+                    continue;
+
                 AttachNode closestNode = ReCouplerManager.getEligiblePairing(partNodes[i], openNodes, connectRadius, connectAngle);
                 if (closestNode != null)
                 {
