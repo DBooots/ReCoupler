@@ -370,6 +370,14 @@ namespace ReCoupler
                 openNodes.Remove(eligibleNodes[fromNode]);
                 log.debug("Creating link between " + fromNode.owner.name + " and " + eligibleNodes[fromNode].owner.name + ".");
 
+                ModuleDockingNode fromDockingPort, toDockingPort;
+
+                if (hasDockingPort(fromNode, out fromDockingPort) && hasDockingPort(eligibleNodes[fromNode], out toDockingPort))
+                {
+                    //fromDockingPort.DockToSameVessel(toDockingPort);
+                    continue;
+                }
+
                 JointTracker newJT = new JointTracker(fromNode, eligibleNodes[fromNode], !vessel.packed);
 
                 joints.Add(newJT);
@@ -437,6 +445,20 @@ namespace ReCoupler
                         if (decoupler.isDecoupled && (part.attachNodes[i] == decoupler.ExplosiveNode || decoupler.isOmniDecoupler))
                         {
                             decoupled = true;
+                            break;
+                        }
+                    }
+                    foreach (ModuleDockingNode dockingNode in part.FindModulesImplementing<ModuleDockingNode>())
+                    {
+                        if (dockingNode.referenceNode == null)
+                        {
+                            log.error("Docking node has null referenceNode!");
+                            continue;
+                        }
+                        if (dockingNode.referenceNode == part.attachNodes[i])
+                        {
+                            if (dockingNode.otherNode != null)
+                                decoupled = true;
                             break;
                         }
                     }
@@ -542,6 +564,20 @@ namespace ReCoupler
             GameEvents.onVesselWasModified.Fire(sourceNode.owner.vessel);
 
             //return vesselInfo;
+        }
+
+        public static bool hasDockingPort(AttachNode node, out ModuleDockingNode dockingPort)
+        {
+            dockingPort = null;
+            foreach(ModuleDockingNode moduleDockingNode in node.owner.FindModulesImplementing<ModuleDockingNode>())
+            {
+                if (moduleDockingNode.referenceNode == node)
+                {
+                    dockingPort = moduleDockingNode;
+                    return true;
+                }
+            }
+            return false;
         }
 
 
