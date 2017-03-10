@@ -530,6 +530,9 @@ namespace ReCoupler
         }
 
         // Adapted from KISv1 by IgorZ
+        // See https://github.com/ihsoft/KAS/tree/KAS-v1.0
+        // This method is in the public domain: https://github.com/ihsoft/KAS/blob/KAS-v1.0/LICENSE-1.0.md
+
         public static void CoupleParts(AttachNode sourceNode, AttachNode targetNode)
         {
             var srcPart = sourceNode.owner;
