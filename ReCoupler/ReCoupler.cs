@@ -436,6 +436,13 @@ namespace ReCoupler
                 if (part.attachNodes[i].attachedPart != null)
                     continue;
 
+                // Dealing with fairing interstage nodes:
+                if (part.attachNodes[i].id.StartsWith("interstage"))
+                {
+                    log.debug("Skipping interstage node: " + part.attachNodes[i].id + " on part " + part.name);
+                    continue;
+                }
+
                 if (HighLogic.LoadedScene == GameScenes.FLIGHT)
                 {
                     bool doNotJoint = false;
