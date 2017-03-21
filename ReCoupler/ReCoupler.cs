@@ -55,6 +55,8 @@ namespace ReCoupler
             }
 
             generateJoints();
+            log.debug("Checking CLS Installation.");
+            bool isCLSInstalled = ConnectedLivingSpacesCompatibility.IsCLSInstalled;
         }
 
         protected override void OnSave(ConfigNode node)
@@ -753,6 +755,8 @@ namespace ReCoupler
                 this.joint = newJoint;
                 this.setNodeAero();
 
+                ConnectedLivingSpacesCompatibility.RequestAddConnection(this.parts[0], this.parts[1]);
+
                 return this.joint;
             }
 
@@ -796,6 +800,9 @@ namespace ReCoupler
 
                 if (parts[1] != null)
                     nodes[1].attachedPart = null;
+
+                if (this.parts[0] != null && this.parts[1] != null)
+                    ConnectedLivingSpacesCompatibility.RequestRemoveConnection(this.parts[0], this.parts[1]);
             }
         }
     }

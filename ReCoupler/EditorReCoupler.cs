@@ -10,7 +10,7 @@ namespace ReCoupler
     [KSPAddon(KSPAddon.Startup.EditorAny, false)]
     public class EditorReCoupler : MonoBehaviour
     {
-        public static EditorReCoupler instance;
+        public static EditorReCoupler Instance;
 
         Logger log = new Logger("EditorReCoupler: ");
 
@@ -23,9 +23,9 @@ namespace ReCoupler
 
         void Awake()
         {
-            if (instance)
-                Destroy(instance);
-            instance = this;
+            if (Instance)
+                Destroy(Instance);
+            Instance = this;
         }
 
         void Start()
@@ -154,6 +154,8 @@ namespace ReCoupler
                     hideNode(closestNode);
                     openNodes.Remove(closestNode);
 
+                    ConnectedLivingSpacesCompatibility.RequestAddConnection(partNodes[i].owner, closestNode.owner);
+
                     //ReCouplerManager.combineCrossfeedSets(closestNode.owner, partNodes[i].owner);
                 }
                 else
@@ -173,8 +175,12 @@ namespace ReCoupler
                 hidingModules.Remove(keyValuePair.Key);
             }
 
-            hidingModules.Clear();
             showAllNodes();
+            hidingModules.Clear();
+            for(int i = nodePairs.Count - 1; i>=0; i--)
+            {
+                ConnectedLivingSpacesCompatibility.RequestRemoveConnection(nodePairs.Keys.ElementAt(i).owner, nodePairs.Values.ElementAt(i).owner);
+            }
             nodePairs.Clear();
             openNodes.Clear();
 
