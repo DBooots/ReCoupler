@@ -18,8 +18,8 @@ namespace ReCoupler
         public Dictionary<AttachNode, AttachNode> nodePairs = new Dictionary<AttachNode, AttachNode>();
         public List<AttachNode> openNodes = new List<AttachNode>();
 
-        public float connectRadius = ReCouplerManager.connectRadius_default;
-        public float connectAngle = ReCouplerManager.connectAngle_default;
+        public float connectRadius = ReCouplerSettings.connectRadius_default;
+        public float connectAngle = ReCouplerSettings.connectAngle_default;
 
         void Awake()
         {
@@ -30,7 +30,7 @@ namespace ReCoupler
 
         void Start()
         {
-            ReCouplerManager.LoadSettings(out connectRadius, out connectAngle);
+            ReCouplerSettings.LoadSettings(out connectRadius, out connectAngle);
 
             log.debug("Registering GameEvents.");
             GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);

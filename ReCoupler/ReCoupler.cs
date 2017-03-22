@@ -13,13 +13,9 @@ namespace ReCoupler
 
         public List<JointTracker> joints = new List<JointTracker>();
         public Dictionary<ModuleDecouple, JointTracker> decouplersInvolved = new Dictionary<ModuleDecouple, JointTracker>();
-
-        public const float connectRadius_default = 0.1f;
-        public const float connectAngle_default = 91;
-        protected internal const string configURL = "ReCoupler/ReCouplerSettings/ReCouplerSettings";
-
-        public float connectRadius = connectRadius_default;
-        public float connectAngle = connectAngle_default;
+        
+        public float connectRadius = ReCouplerSettings.connectRadius_default;
+        public float connectAngle = ReCouplerSettings.connectAngle_default;
 
         protected bool checkCoupleNextFrame = false;
         protected bool checkBreakNextFrame = false;
@@ -28,7 +24,7 @@ namespace ReCoupler
         
         new public void Start()
         {
-            LoadSettings(out connectRadius, out connectAngle);
+            ReCouplerSettings.LoadSettings(out connectRadius, out connectAngle);
 
             destroyAllJoints();
             joints.Clear();
@@ -56,7 +52,7 @@ namespace ReCoupler
 
             generateJoints();
             log.debug("Checking CLS Installation.");
-            bool isCLSInstalled = ConnectedLivingSpacesCompatibility.IsCLSInstalled;
+            ReCouplerSettings.isCLSInstalled = ConnectedLivingSpacesCompatibility.IsCLSInstalled;
         }
 
         protected override void OnSave(ConfigNode node)
@@ -68,6 +64,9 @@ namespace ReCoupler
                 log.debug("OnSave: " + vessel.vesselName);
                 List<Part> parts = vessel.Parts;
                 log.debug("Saving " + joints.Count + " nodes.");
+
+                node.AddValue("connectRadius", connectRadius);
+                node.AddValue("connectAngle", connectAngle);
 
                 for (int i = 0; i < joints.Count; i++)
                 {
@@ -97,6 +96,15 @@ namespace ReCoupler
         protected override void OnLoad(ConfigNode node)
         {
             base.OnLoad(node);
+            connectRadius = ReCouplerSettings.connectRadius;
+            connectAngle = ReCouplerSettings.connectAngle;
+
+            if (node.HasValue("connectRadius"))
+                if (!float.TryParse(node.GetValue("connectRadius"), out connectRadius))
+                    connectRadius = ReCouplerSettings.connectRadius;
+            if (node.HasValue("connectAngle"))
+                if (!float.TryParse(node.GetValue("connectAngle"), out connectAngle))
+                    connectAngle = ReCouplerSettings.connectAngle;
 
             foreach (ConfigNode jointTrackerNode in node.GetNodes("RECOUPLER"))
             {
@@ -117,41 +125,6 @@ namespace ReCoupler
 
                 storedData.Add(new int[2] { partsID[0], nodesID[0] });
                 storedData.Add(new int[2] { partsID[1], nodesID[1] });
-            }
-        }
-
-        public static void LoadSettings(out float loadedRadius, out float loadedAngle)
-        {
-            var cfgs = GameDatabase.Instance.GetConfigs("ReCouplerSettings");
-            if (cfgs.Length > 0)
-            {
-                if (!float.TryParse(cfgs[0].config.GetValue("connectRadius"), out loadedRadius))
-                    loadedRadius = connectRadius_default;
-
-                if (!float.TryParse(cfgs[0].config.GetValue("connectAngle"), out loadedAngle))
-                    loadedAngle = connectAngle_default;
-                
-                if (!cfgs[0].url.Equals(configURL))
-                {
-                    for (int i = 0; i < cfgs.Length; i++)
-                    {
-                        if (cfgs[i].url.Equals(configURL))
-                        {
-                            if (!float.TryParse(cfgs[i].config.GetValue("connectRadius"), out loadedRadius))
-                                loadedRadius = connectRadius_default;
-
-                            if (!float.TryParse(cfgs[i].config.GetValue("connectAngle"), out loadedAngle))
-                                loadedAngle = connectAngle_default;
-                            break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                loadedRadius = connectRadius_default;
-                loadedAngle = connectAngle_default;
-                log.warning("Couldn't find the settings, using the defaults.");
             }
         }
 
@@ -495,7 +468,7 @@ namespace ReCoupler
             return openNodes;
         }
 
-        public static Dictionary<AttachNode, AttachNode> getEligibleNodes(List<AttachNode> nodes, float radius = connectRadius_default, float angle = connectAngle_default)
+        public static Dictionary<AttachNode, AttachNode> getEligibleNodes(List<AttachNode> nodes, float radius = ReCouplerSettings.connectRadius_default, float angle = ReCouplerSettings.connectAngle_default)
         {
             Dictionary<AttachNode, AttachNode> eligiblePairs = new Dictionary<AttachNode, AttachNode>();
             for (int i = 0; i < nodes.Count - 1; i++)
@@ -516,7 +489,7 @@ namespace ReCoupler
             return eligiblePairs;
         }
 
-        public static AttachNode getEligiblePairing(AttachNode node, List<AttachNode> checkNodes, float radius = connectRadius_default, float angle = connectAngle_default)
+        public static AttachNode getEligiblePairing(AttachNode node, List<AttachNode> checkNodes, float radius = ReCouplerSettings.connectRadius_default, float angle = ReCouplerSettings.connectAngle_default)
         {
             float closestDist = radius;
             AttachNode closestNode = null;
