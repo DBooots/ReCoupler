@@ -247,14 +247,14 @@ namespace ReCoupler
                     continue;
                 } else if (jt.isTrackingDockingPorts)
                 {
-                    ModuleDockingNode dockingNode;
-                    if (!hasDockingPort(jt.nodes[0], out dockingNode))
-                        hasDockingPort(jt.nodes[1], out dockingNode);
-                    log.debug(dockingNode.state);
-                    if (dockingNode.state != dockingNode.st_docked_dockee.name &&
+                    ModuleDockingNode fromNode, toNode;
+                    hasDockingPort(jt.nodes[0], out fromNode);
+                    hasDockingPort(jt.nodes[1], out toNode);
+                    /*if (dockingNode.state != dockingNode.st_docked_dockee.name &&
                         dockingNode.state != dockingNode.st_docked_docker.name &&
                         dockingNode.state != dockingNode.st_docker_sameVessel.name &&
-                        dockingNode.state != dockingNode.st_preattached.name)
+                        dockingNode.state != dockingNode.st_preattached.name)*/
+                    if (fromNode.otherNode != toNode && toNode.otherNode != fromNode)
                     {
                         log.debug("A joint must have undocked.");
                         joints.Remove(jt);
@@ -366,12 +366,17 @@ namespace ReCoupler
 
                 ModuleDockingNode fromDockingPort, toDockingPort;
 
-                if (hasDockingPort(fromNode, out fromDockingPort) && hasDockingPort(eligibleNodes[fromNode], out toDockingPort))
+                if (hasDockingPort(fromNode, out fromDockingPort) || hasDockingPort(eligibleNodes[fromNode], out toDockingPort))
                 {
-                    //fromDockingPort.DockToSameVessel(toDockingPort);
-                    joints.Add(new JointTracker(fromNode, eligibleNodes[fromNode], link: true, isTrackingDockingPorts: true));
+                    log.debug("Never mind, they have docking ports.");
                     continue;
                 }
+
+                /*if (hasDockingPort(fromNode, out fromDockingPort) && hasDockingPort(eligibleNodes[fromNode], out toDockingPort))
+                {
+                    joints.Add(new JointTracker(fromNode, eligibleNodes[fromNode], link: true, isTrackingDockingPorts: true));
+                    continue;
+                }*/
 
                 JointTracker newJT = new JointTracker(fromNode, eligibleNodes[fromNode], !vessel.packed);
 
