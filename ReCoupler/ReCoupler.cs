@@ -239,12 +239,27 @@ namespace ReCoupler
                     joints.Remove(jt);
                     continue;
                 }
-                if (jt.joint == null)
+                if (jt.joint == null && !jt.isTrackingDockingPorts)
                 {
                     log.debug("A joint must have broken.");
                     jt.destroyLink();
                     joints.Remove(jt);
                     continue;
+                } else if (jt.isTrackingDockingPorts)
+                {
+                    ModuleDockingNode dockingNode;
+                    if (!hasDockingPort(jt.nodes[0], out dockingNode))
+                        hasDockingPort(jt.nodes[1], out dockingNode);
+                    log.debug(dockingNode.state);
+                    if (dockingNode.state != dockingNode.st_docked_dockee.name &&
+                        dockingNode.state != dockingNode.st_docked_docker.name &&
+                        dockingNode.state != dockingNode.st_docker_sameVessel.name &&
+                        dockingNode.state != dockingNode.st_preattached.name)
+                    {
+                        log.debug("A joint must have undocked.");
+                        joints.Remove(jt);
+                        continue;
+                    }
                 }
 
                 log.debug(jt.parts[0].name + " / " + jt.parts[1].name);
@@ -269,6 +284,10 @@ namespace ReCoupler
                     log.debug("Coupling " + couplePart.name + " to " + targetPart.name + ".");
 
                     CoupleParts(coupleNode, targetNode);
+
+                    if (!jt.isTrackingDockingPorts)
+                        jt.destroyLink();
+                    joints.Remove(jt);
                     combinedAny = true;
                     
                     //targetPart.vessel.currentStage = KSP.UI.Screens.StageManager.RecalculateVesselStaging(targetPart.vessel);
@@ -350,6 +369,7 @@ namespace ReCoupler
                 if (hasDockingPort(fromNode, out fromDockingPort) && hasDockingPort(eligibleNodes[fromNode], out toDockingPort))
                 {
                     //fromDockingPort.DockToSameVessel(toDockingPort);
+                    joints.Add(new JointTracker(fromNode, eligibleNodes[fromNode], link: true, isTrackingDockingPorts: true));
                     continue;
                 }
 
@@ -420,41 +440,45 @@ namespace ReCoupler
 
                 if (HighLogic.LoadedScene == GameScenes.FLIGHT)
                 {
-                    bool doNotJoint = false;
+                    bool doNotJoin = false;
 
-                    foreach (ModuleDecouple decoupler in part.FindModulesImplementing<ModuleDecouple>())
+                    if (part.FindModulesImplementing<ModuleDecouple>().Any(decoupler => decoupler.isDecoupled && (decoupler.ExplosiveNode == part.attachNodes[i] || decoupler.isOmniDecoupler)))
+                        doNotJoin = true;
+                    /*foreach (ModuleDecouple decoupler in part.FindModulesImplementing<ModuleDecouple>())
                     {
                         if (decoupler.isDecoupled && (part.attachNodes[i] == decoupler.ExplosiveNode || decoupler.isOmniDecoupler))
                         {
                             doNotJoint = true;
                             break;
                         }
-                    }
+                    }*/
                     foreach (ModuleDockingNode dockingNode in part.FindModulesImplementing<ModuleDockingNode>())
                     {
                         if (dockingNode.referenceNode == null)
                         {
-                            log.error("Docking node has null referenceNode!");
+                            log.error("Docking node has null referenceNode! " + part.name);
                             continue;
                         }
                         if (dockingNode.referenceNode == part.attachNodes[i])
                         {
                             if (dockingNode.otherNode != null)
-                                doNotJoint = true;
+                                doNotJoin = true;
                             break;
                         }
                     }
 
-                    foreach (ModuleCargoBay cargoBay in part.FindModulesImplementing<ModuleCargoBay>())
+                    /*foreach (ModuleCargoBay cargoBay in part.FindModulesImplementing<ModuleCargoBay>())
                     {
                         if (cargoBay.nodeInnerForeID == part.attachNodes[i].id || cargoBay.nodeInnerAftID == part.attachNodes[i].id)
                         {
                             doNotJoint = true;
                             break;
                         }
-                    }
+                    }*/
+                    if (part.FindModulesImplementing<ModuleCargoBay>().Any(cargoBay => cargoBay.nodeInnerForeID == part.attachNodes[i].id || cargoBay.nodeInnerAftID == part.attachNodes[i].id))
+                        doNotJoin = true;
 
-                    if (doNotJoint)
+                    if (doNotJoin)
                         continue;
                 }
                 // On revert to launch/some loads, certain AttachNode.owner's were null.
@@ -522,10 +546,9 @@ namespace ReCoupler
             return closestNode;
         }
 
-        // Adapted from KISv1 by IgorZ
+        // Adapted from KASv1 by IgorZ
         // See https://github.com/ihsoft/KAS/tree/KAS-v1.0
         // This method is in the public domain: https://github.com/ihsoft/KAS/blob/KAS-v1.0/LICENSE-1.0.md
-
         public static void CoupleParts(AttachNode sourceNode, AttachNode targetNode)
         {
             var srcPart = sourceNode.owner;
@@ -559,21 +582,58 @@ namespace ReCoupler
             }
             GameEvents.onVesselWasModified.Fire(sourceNode.owner.vessel);
 
+            ModuleDockingNode sourcePort, targetPort;
+            if (hasDockingPort(sourceNode, out sourcePort))
+                CoupleDockingPortWithPart(sourcePort);
+            if (hasDockingPort(targetNode, out targetPort))
+                CoupleDockingPortWithPart(targetPort);
+
             //return vesselInfo;
+        }
+
+        // Adapted from KIS by IgorZ
+        // See https://github.com/ihsoft/KIS/blob/master/Source/KIS_Shared.cs#L1005-L1039
+        // This method is in the public domain.
+        /// <summary>Couples docking port with a part at its reference attach node.</summary>
+        /// <remarks>Both parts must be already connected and the attach nodes correctly set.</remarks>
+        /// <param name="dockingNode">Port to couple.</param>
+        /// <returns><c>true</c> if coupling was successful.</returns>
+        public static bool CoupleDockingPortWithPart(ModuleDockingNode dockingNode)
+        {
+            Part tgtPart = dockingNode.referenceNode.attachedPart;
+            if (tgtPart == null)
+            {
+                log.error("Node's part " + dockingNode.part.name + " is not attached to anything thru the reference node");
+                return false;
+            }
+            if (dockingNode.state != dockingNode.st_ready.name)
+            {
+                log.debug("Hard reset docking node " + dockingNode.part.name + " from state " + dockingNode.state + " to " + dockingNode.st_ready.name);
+                dockingNode.dockedPartUId = 0;
+                dockingNode.dockingNodeModuleIndex = 0;
+                // Target part lived in real world for some time, so its state may be anything.
+                // Do a hard reset.
+                dockingNode.fsm.StartFSM(dockingNode.st_ready.name);
+            }
+            var initState = dockingNode.lateFSMStart(PartModule.StartState.None);
+            // Make sure part init catched the new state.
+            while (initState.MoveNext())
+            {
+                // Do nothing. Just wait.
+            }
+            if (dockingNode.fsm.currentStateName != dockingNode.st_preattached.name)
+            {
+                log.warning("Node on " + dockingNode.part.name + " is unexpected state " + dockingNode.fsm.currentStateName);
+                return false;
+            }
+            log.debug("Successfully set docking node " + dockingNode.part + " to state " + dockingNode.fsm.currentStateName + " with part " + tgtPart.name);
+            return true;
         }
 
         public static bool hasDockingPort(AttachNode node, out ModuleDockingNode dockingPort)
         {
-            dockingPort = null;
-            foreach(ModuleDockingNode moduleDockingNode in node.owner.FindModulesImplementing<ModuleDockingNode>())
-            {
-                if (moduleDockingNode.referenceNode == node)
-                {
-                    dockingPort = moduleDockingNode;
-                    return true;
-                }
-            }
-            return false;
+            dockingPort = node.owner.FindModulesImplementing<ModuleDockingNode>().FirstOrDefault(dockingNode => dockingNode.referenceNode == node);
+            return (dockingPort != null);
         }
 
 
@@ -582,10 +642,11 @@ namespace ReCoupler
             public ConfigurableJoint joint = null;
             public List<AttachNode> nodes;
             public List<Part> parts;
+            public bool isTrackingDockingPorts = false;
 
             Logger log;
 
-            private List<ModuleDecouple> cachedDecouplers = null;
+            protected List<ModuleDecouple> cachedDecouplers = null;
 
             public List<ModuleDecouple> decouplers
             {
@@ -596,11 +657,7 @@ namespace ReCoupler
                         cachedDecouplers = new List<ModuleDecouple>();
                         for (int i = 0; i < parts.Count; i++)
                         {
-                            foreach (ModuleDecouple decoupler in parts[i].FindModulesImplementing<ModuleDecouple>())
-                            {
-                                if (decoupler.isOmniDecoupler || decoupler.ExplosiveNode == nodes[i])
-                                    cachedDecouplers.Add(decoupler);
-                            }
+                            cachedDecouplers.AddRange(parts[i].FindModulesImplementing<ModuleDecouple>().FindAll(decoupler => decoupler.isOmniDecoupler || decoupler.ExplosiveNode == nodes[i]));
                         }
                     }
                     return cachedDecouplers;
@@ -614,25 +671,29 @@ namespace ReCoupler
                 this.nodes = nodes;
             }*/
 
-            public JointTracker(ConfigurableJoint joint, AttachNode parentNode, AttachNode childNode, bool link = true)
+            public JointTracker(ConfigurableJoint joint, AttachNode parentNode, AttachNode childNode, bool link = true, bool isTrackingDockingPorts = false)
             {
                 this.joint = joint;
                 this.nodes = new List<AttachNode> { parentNode, childNode };
                 this.parts = new List<Part> { parentNode.owner, childNode.owner };
                 log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name);
+                this.isTrackingDockingPorts = isTrackingDockingPorts;
                 if (link)
                     this.createLink();
-                this.setNodeAero();
+                if (!isTrackingDockingPorts)
+                    this.setNodeAero();
             }
 
-            public JointTracker(AttachNode parentNode, AttachNode childNode, bool link = true)
+            public JointTracker(AttachNode parentNode, AttachNode childNode, bool link = true, bool isTrackingDockingPorts = false)
             {
                 this.nodes = new List<AttachNode> { parentNode, childNode };
                 this.parts = new List<Part> { parentNode.owner, childNode.owner };
                 log = new Logger("ReCoupler: JointTracker: " + parts[0].name + " and " + parts[1].name + " ");
+                this.isTrackingDockingPorts = isTrackingDockingPorts;
                 if (link)
                     this.createLink();
-                this.setNodeAero();
+                if (!isTrackingDockingPorts)
+                    this.setNodeAero();
             }
 
             public void setNodeAero()
@@ -650,6 +711,11 @@ namespace ReCoupler
                 if (this.joint != null)
                 {
                     log.warning("This link already has a joint object.");
+                    return this.joint;
+                }
+                if (isTrackingDockingPorts)
+                {
+                    this.joint = new ConfigurableJoint();
                     return this.joint;
                 }
 
@@ -752,6 +818,8 @@ namespace ReCoupler
 
             public void combineCrossfeedSets()
             {
+                if (isTrackingDockingPorts)
+                    return;
                 if (parts[0].crossfeedPartSet == null)
                     return;
                 if (parts[0].crossfeedPartSet.ContainsPart(parts[1]))
@@ -764,6 +832,9 @@ namespace ReCoupler
 
             public void destroyLink()
             {
+                if (!isTrackingDockingPorts)
+                    return;
+
                 log.debug("Destroying a link.");
                 if (joint != null)
                     GameObject.Destroy(joint);
