@@ -529,6 +529,8 @@ namespace ReCoupler
                     continue; // Nodes on the same Part are not eligible.
                 if (node.owner.parent == checkNodes[j].owner || checkNodes[j].owner.parent == node.owner)
                     continue; // Parent-child relationships don't need doubling up.
+                if (ReCouplerGUI.Instance.partPairsToIgnore.Any((Part[] parts) => parts.Contains(node.owner) && parts.Contains(checkNodes[j].owner)))
+                    continue; // This one was told to be ignored.
 
                 /*float dist = (Part.PartToVesselSpacePos(node.position, node.owner, node.owner.vessel, PartSpaceMode.Pristine) -
                     Part.PartToVesselSpacePos(checkNodes[j].position, checkNodes[j].owner, checkNodes[j].owner.vessel, PartSpaceMode.Pristine)).magnitude;
@@ -647,6 +649,7 @@ namespace ReCoupler
             public ConfigurableJoint joint = null;
             public List<AttachNode> nodes;
             public List<Part> parts;
+            public List<PartSet> oldCrossfeedSets = new List<PartSet>();
             public bool isTrackingDockingPorts = false;
 
             Logger log;
@@ -829,6 +832,8 @@ namespace ReCoupler
                     return;
                 if (parts[0].crossfeedPartSet.ContainsPart(parts[1]))
                     return;
+                oldCrossfeedSets.Add(parts[0].crossfeedPartSet);
+                oldCrossfeedSets.Add(parts[1].crossfeedPartSet);
                 log.debug("Part Xfeed: " + parts[0].fuelCrossFeed + " node: " + nodes[0].ResourceXFeed);
                 log.debug("Part Xfeed: " + parts[1].fuelCrossFeed + " node: " + nodes[1].ResourceXFeed);
                 log.debug("Combining Crossfeed Sets.");
@@ -837,7 +842,7 @@ namespace ReCoupler
 
             public void destroyLink()
             {
-                if (!isTrackingDockingPorts)
+                if (isTrackingDockingPorts)
                     return;
 
                 log.debug("Destroying a link.");

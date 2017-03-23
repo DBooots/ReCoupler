@@ -55,5 +55,11 @@
 
             settingsLoaded = true;
         }
+
+        public static void LoadSettings()
+        {
+            float tempFloat1, tempFloat2;
+            LoadSettings(out tempFloat1, out tempFloat2);
+        }
     }
 }
