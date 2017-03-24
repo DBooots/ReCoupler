@@ -4,3 +4,4 @@ ReCoupler/obj/*
 !ReCoupler.dll
 .vs/ReCoupler/v14/.suo
 *.zip
+GameData/ReCoupler/Thumbs.db
