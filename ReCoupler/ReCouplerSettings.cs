@@ -9,7 +9,7 @@
         public static float connectRadius = connectRadius_default;
         public static float connectAngle = connectAngle_default;
 
-        public static bool showGUI = false; // Not yet implemented.
+        public static bool showGUI = true;
         public static bool isCLSInstalled = false;
         public static bool settingsLoaded = false;
 
@@ -17,6 +17,7 @@
         {
             loadedRadius = connectRadius;
             loadedAngle = connectAngle;
+            bool loadedShowGUI = showGUI;
             if (settingsLoaded)
                 return;
 
@@ -36,6 +37,11 @@
                             loadedAngle = connectAngle;
                         else
                             connectAngle = loadedAngle;
+
+                        if (!bool.TryParse(cfgs[i].config.GetValue("showGUI"), out loadedShowGUI))
+                            showGUI = true;
+                        else
+                            showGUI = loadedShowGUI;
                         break;
                     }
                     else if (i == cfgs.Length - 1)
