@@ -10,27 +10,83 @@ namespace ReCoupler
     [KSPAddon(KSPAddon.Startup.EditorAny, false)]
     public class EditorReCoupler : MonoBehaviour
     {
-        public static EditorReCoupler instance;
+        public static EditorReCoupler Instance;
 
         Logger log = new Logger("EditorReCoupler: ");
 
-        public Dictionary<AttachNode, ModuleAttachNodeHide> hidingModules = new Dictionary<AttachNode, ModuleAttachNodeHide>();
-        public Dictionary<AttachNode, AttachNode> nodePairs = new Dictionary<AttachNode, AttachNode>();
+        //public Dictionary<AttachNode, ModuleAttachNodeHide> hidingModules = new Dictionary<AttachNode, ModuleAttachNodeHide>();
+        public List<AttachNode[]> nodePairs = new List<AttachNode[]>();
         public List<AttachNode> openNodes = new List<AttachNode>();
+        public List<hideData> hiddenNodes = new List<hideData>();
 
-        public float connectRadius = ReCouplerManager.connectRadius_default;
-        public float connectAngle = ReCouplerManager.connectAngle_default;
+        public float connectRadius = ReCouplerSettings.connectRadius_default;
+        public float connectAngle = ReCouplerSettings.connectAngle_default;
+
+        public bool anyhidden = false;
+        public bool allHidden = false;
+
+        public class hideData
+        {
+            public AttachNode node;
+            public float size;
+            public AttachNode.NodeType nodeType;
+            bool hidden;
+
+            public hideData(AttachNode node, float size, AttachNode.NodeType nodeType, bool hidden = false)
+            {
+                this.node = node;
+                this.size = size;
+                this.nodeType = nodeType;
+                this.hidden = hidden;
+                EditorReCoupler.Instance.anyhidden |= this.hidden;
+            }
+            public hideData(AttachNode node)
+            {
+                this.node = node;
+                this.size = node.radius;
+                this.nodeType = node.nodeType;
+                if (this.size == 0.01f)
+                {
+                    this.hidden = true;
+                    this.size = 0.4f;
+                    this.nodeType = AttachNode.NodeType.Stack;
+                }
+                else
+                    this.hidden = false;
+                EditorReCoupler.Instance.anyhidden |= this.hidden;
+            }
+
+            public void hideNode()
+            {
+                if (hidden)
+                    return;
+                hidden = true;
+                EditorReCoupler.Instance.anyhidden = true;
+                node.radius = 0.01f;
+                node.nodeType = AttachNode.NodeType.Dock;
+            }
+
+            public void showNode()
+            {
+                if (!hidden)
+                    return;
+                node.radius = size;
+                node.nodeType = nodeType;
+                hidden = false;
+                EditorReCoupler.Instance.allHidden = false;
+            }
+        }
 
         void Awake()
         {
-            if (instance)
-                Destroy(instance);
-            instance = this;
+            if (Instance)
+                Destroy(Instance);
+            Instance = this;
         }
 
         void Start()
         {
-            ReCouplerManager.LoadSettings(out connectRadius, out connectAngle);
+            ReCouplerSettings.LoadSettings(out connectRadius, out connectAngle);
 
             log.debug("Registering GameEvents.");
             GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
@@ -67,13 +123,11 @@ namespace ReCoupler
             showAllNodes();
             if (FromToData.from == GameScenes.EDITOR)
             {
-                for (int i = hidingModules.Count - 1; i >= 0; i--)
+                for (int i = hiddenNodes.Count - 1; i >= 0; i--)
                 {
-                    var keyValuePair = hidingModules.ElementAt(i);
-                    keyValuePair.Key.owner.RemoveModule(keyValuePair.Value);
-                    hidingModules.Remove(keyValuePair.Key);
+                    hiddenNodes[i].showNode();
                 }
-                hidingModules.Clear();
+                hiddenNodes.Clear();
             }
         }
 
@@ -148,11 +202,14 @@ namespace ReCoupler
                 AttachNode closestNode = ReCouplerManager.getEligiblePairing(partNodes[i], openNodes, connectRadius, connectAngle);
                 if (closestNode != null)
                 {
-                    nodePairs.Add(partNodes[i], closestNode);
-                    nodePairs.Add(closestNode, partNodes[i]);
-                    hideNode(partNodes[i]);
-                    hideNode(closestNode);
+                    nodePairs.Add(new AttachNode[] { partNodes[i], closestNode });
+                    hiddenNodes.Add(new hideData(partNodes[i]));
+                    hiddenNodes.Add(new hideData(closestNode));
+                    //hideNode(partNodes[i]);
+                    //hideNode(closestNode);
                     openNodes.Remove(closestNode);
+
+                    ConnectedLivingSpacesCompatibility.RequestAddConnection(partNodes[i].owner, closestNode.owner);
 
                     //ReCouplerManager.combineCrossfeedSets(closestNode.owner, partNodes[i].owner);
                 }
@@ -165,16 +222,13 @@ namespace ReCoupler
         public void reConstruct(ShipConstruct ship)
         {
             //log.debug("reConstruct(ship)");
-            log.debug("Removing existing extra PartModules");
-            for (int i = hidingModules.Count - 1; i >= 0; i--)
-            {
-                var keyValuePair = hidingModules.ElementAt(i);
-                keyValuePair.Key.owner.RemoveModule(keyValuePair.Value);
-                hidingModules.Remove(keyValuePair.Key);
-            }
 
-            hidingModules.Clear();
             showAllNodes();
+            hiddenNodes.Clear();
+            for(int i = nodePairs.Count - 1; i>=0; i--)
+            {
+                ConnectedLivingSpacesCompatibility.RequestRemoveConnection(nodePairs[i][0].owner, nodePairs[i][1].owner);
+            }
             nodePairs.Clear();
             openNodes.Clear();
 
@@ -207,7 +261,14 @@ namespace ReCoupler
         {
             if (constEvent == ConstructionEventType.PartAttached || constEvent == ConstructionEventType.PartDetached ||
                 constEvent == ConstructionEventType.PartOffset || constEvent == ConstructionEventType.PartRotated)
+            {
                 reConstruct();
+                showAllNodes();
+            }
+            else if (constEvent == ConstructionEventType.PartDragging)
+                hideAllNodes();
+            else
+                showAllNodes();
 
             /*if (constEvent == ConstructionEventType.PartAttached)
             {
@@ -247,7 +308,7 @@ namespace ReCoupler
                         showNode(node);
                 }
             }*/
-            else if (constEvent == ConstructionEventType.PartCopied)
+            /*else if (constEvent == ConstructionEventType.PartCopied)
             {
                 log.debug("Copied a part.");
                 List<Part> partsCopied = new List<Part>();
@@ -264,58 +325,54 @@ namespace ReCoupler
                     }
                 }
                 reConstruct();
-            }
+            }*/
         }
 
         public void showAllNodes()
         {
-            for(int i = hidingModules.Count-1; i>=0; i--)
+            if (anyhidden == false)
+                return;
+            for(int i = hiddenNodes.Count-1; i>=0; i--)
             {
-                ModuleAttachNodeHide node = hidingModules.Values.ElementAt(i);
-                if (node != null)
-                    node.show();
+                if (hiddenNodes[i].node != null)
+                    hiddenNodes[i].showNode();
                 else
                 {
                     log.error("hidingModules element was null!");
-                    hidingModules.Remove(hidingModules.Keys.ElementAt(i));
+                    hiddenNodes.Remove(hiddenNodes[i]);
                 }
             }
+            allHidden = false;
+            anyhidden = false;
+        }
+
+        public void hideAllNodes()
+        {
+            if (allHidden == true)
+                return;
+            for (int i = hiddenNodes.Count - 1; i >= 0; i--)
+            {
+                if (hiddenNodes[i].node != null)
+                    hiddenNodes[i].hideNode();
+                else
+                {
+                    log.error("hidingModules element was null!");
+                    hiddenNodes.Remove(hiddenNodes[i]);
+                }
+            }
+            allHidden = true;
+            anyhidden = true;
         }
 
         public void hideNode(AttachNode node)
         {
-            if (!hidingModules.ContainsKey(node))
-            {
-                log.debug("Creating PartModule on " + node.owner.name);
-                ModuleAttachNodeHide hidingModule = createModule(node);
-                if (hidingModule != null)
-                    hidingModules.Add(node, hidingModule);
-            }
-            if (hidingModules.ContainsKey(node))
+            if (!hiddenNodes.Any(hiddenNode => hiddenNode.node == node))
+                hiddenNodes.Add(new hideData(node));
+            if (hiddenNodes.Any(hiddenNode => hiddenNode.node == node))
             {
                 log.debug("Hiding node on " + node.owner.name);
-                hidingModules[node].hide();
+                hiddenNodes.FirstOrDefault(hiddenNode => hiddenNode.node == node).hideNode();
             }
-        }
-
-        ModuleAttachNodeHide createModule(AttachNode node)
-        {
-            ModuleAttachNodeHide hideModule = node.owner.AddModule("ModuleAttachNodeHide") as ModuleAttachNodeHide;
-            if(hideModule == null)
-            {
-                log.error("PartModule creation broke and returned null.");
-                return null;
-            }
-            hideModule.EditorAwake();
-            hideModule.setNode(node);
-            if (hideModule.node == null)
-            {
-                node.owner.RemoveModule(hideModule);
-                log.warning("The node wasn't set successfully, destroying the PartModule.");
-                return null;
-            }
-
-            return hideModule;
         }
 
         public void showNode(AttachNode node)
@@ -325,14 +382,14 @@ namespace ReCoupler
                 log.error("Node is null!");
                 return;
             }
-            if (!hidingModules.ContainsKey(node))
+            if (!hiddenNodes.Any(hiddenNode => hiddenNode.node == node))
             {
                 log.error("Node does not exist in hidden nodes list!");
                 node.nodeType = AttachNode.NodeType.Stack;
                 node.radius = 0.4f;
                 return;
             }
-            hidingModules[node].show();
+            hiddenNodes.FirstOrDefault(hiddenNode => hiddenNode.node == node).showNode();
         }
     }
 }
