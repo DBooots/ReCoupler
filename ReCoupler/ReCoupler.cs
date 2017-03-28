@@ -358,6 +358,14 @@ namespace ReCoupler
             log.debug("Generating joints");
             decouplersInvolved.Clear();
 
+            for (int i = this.vessel.parts.Count - 1; i >= 0; i--)
+            {
+                List<AttachNode> problemNodes = findProblemNodes(this.vessel.parts[i]);
+                for (int j = problemNodes.Count - 1; j >= 0; j--)
+                    if (!joints.Any((JointTracker jt) => jt.nodes.Contains(problemNodes[j])))
+                        problemNodes[j].attachedPart = null;
+            }
+
             List<AttachNode> openNodes = findOpenNodes(this.vessel);
             // Removing nodes that we have as part of fake links:
             foreach(JointTracker jt in joints)
@@ -414,6 +422,20 @@ namespace ReCoupler
             joints.Clear();
         }
 
+        public static List<AttachNode> findProblemNodes(Part part)
+        {
+            List<AttachNode> problemNodes = new List<AttachNode>();
+            List<Part> childs = part.FindChildParts<Part>(false).ToList();
+            if (part.parent != null)
+                childs.Add(part.parent);
+            for (int i = 0; i < part.attachNodes.Count; i++)
+            {
+                if (part.attachNodes[i].attachedPart != null && !childs.Contains(part.attachNodes[i].attachedPart))
+                    problemNodes.Add(part.attachNodes[i]);
+            }
+            return problemNodes;
+        }
+
         public static List<AttachNode> findOpenNodes(Vessel vessel)
         {
             return findOpenNodes(vessel.Parts);
@@ -446,7 +468,7 @@ namespace ReCoupler
             {
                 if (part.attachNodes[i].nodeType == AttachNode.NodeType.Surface)
                     continue;
-
+                
                 if (part.attachNodes[i].attachedPart != null)
                     continue;
 
@@ -669,6 +691,7 @@ namespace ReCoupler
             Logger log;
 
             protected List<ModuleDecouple> cachedDecouplers = null;
+            private bool[] structNodeMan = new bool[2] { false, false };
 
             public List<ModuleDecouple> decouplers
             {
@@ -726,6 +749,23 @@ namespace ReCoupler
                 nodes[0].attachedPartId = parts[1].flightID;
                 nodes[1].attachedPart = parts[0];
                 nodes[1].attachedPartId = parts[0].flightID;
+
+                ModuleStructuralNode structuralNode = nodes[0].owner.FindModulesImplementing<ModuleStructuralNode>().FirstOrDefault(msn => msn.attachNodeNames.Equals(nodes[0].id));
+                if (structuralNode != null)
+                {
+                    this.structNodeMan[0] = structuralNode.spawnManually;
+                    structuralNode.spawnManually = true;
+                    structuralNode.SpawnStructure();
+                }
+                structuralNode = nodes[1].owner.FindModulesImplementing<ModuleStructuralNode>().FirstOrDefault(msn => msn.attachNodeNames.Equals(nodes[1].id));
+                if (structuralNode != null)
+                {
+                    this.structNodeMan[1] = structuralNode.spawnManually;
+                    structuralNode.spawnManually = true;
+                    structuralNode.SpawnStructure();
+                }
+
+                GameEvents.onVesselWasModified.Fire(parts[0].vessel);
             }
 
             public ConfigurableJoint createLink()
@@ -869,8 +909,32 @@ namespace ReCoupler
                 if (parts[1] != null)
                     nodes[1].attachedPart = null;
 
+                ModuleStructuralNode structuralNode;
+                if (nodes[0] != null)
+                {
+                    structuralNode = nodes[0].owner.FindModulesImplementing<ModuleStructuralNode>().FirstOrDefault(msn => msn.attachNodeNames.Equals(nodes[0].id));
+                    if (structuralNode != null)
+                    {
+                        structuralNode.DespawnStructure();
+                        structuralNode.spawnManually = structNodeMan[0];
+                    }
+                }
+                if (nodes[1] != null)
+                {
+                    structuralNode = nodes[1].owner.FindModulesImplementing<ModuleStructuralNode>().FirstOrDefault(msn => msn.attachNodeNames.Equals(nodes[1].id));
+                    if (structuralNode != null)
+                    {
+                        structuralNode.DespawnStructure();
+                        structuralNode.spawnManually = structNodeMan[1];
+                    }
+                }
+
+
                 if (this.parts[0] != null && this.parts[1] != null)
                     ConnectedLivingSpacesCompatibility.RequestRemoveConnection(this.parts[0], this.parts[1]);
+
+                if (parts[0] != null && parts[0].vessel != null)
+                    GameEvents.onVesselWasModified.Fire(parts[0].vessel);
             }
         }
     }
