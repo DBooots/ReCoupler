@@ -225,11 +225,11 @@ namespace ReCoupler
                 if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
                 {
                     editorInstance = EditorReCoupler.Instance;
-                    for (int i = 0; i < editorInstance.nodePairs.Count; i++)
+                    for (int i = 0; i < editorInstance.hiddenNodes.Count; i++)
                     {
-                        for (int j = editorInstance.nodePairs[i].Length - 1; j >= 0; j--)
+                        for (int j = editorInstance.hiddenNodes[i].parts.Count - 1; j >= 0; j--)
                         {
-                            highlightPart(editorInstance.nodePairs[i][j].owner, i);
+                            highlightPart(editorInstance.hiddenNodes[i].parts[j], i);
                         }
                     }
                 }
@@ -273,13 +273,12 @@ namespace ReCoupler
                             if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
                             {
                                 editorInstance = EditorReCoupler.Instance;
-                                List<Part[]> joints = new List<Part[]>();
-                                List<AttachNode[]> attNodes = editorInstance.nodePairs.FindAll((AttachNode[] np) => np[0].owner == hitPart || np[1].owner == hitPart);
-                                for (int i = attNodes.Count - 1; i >= 0; i--)
+                                List<EditorReCoupler.EditorJointTracker> EJT = editorInstance.hiddenNodes.FindAll(ejt => ejt.parts.Contains(hitPart));
+                                for (int i = EJT.Count - 1; i >= 0; i--)
                                 {
-                                    editorInstance.showNode(attNodes[i][0]);
-                                    editorInstance.showNode(attNodes[i][1]);
-                                    partPairsToIgnore.Add(new Part[] { attNodes[i][0].owner, attNodes[i][1].owner });
+                                    EJT[i].Destroy();
+                                    editorInstance.hiddenNodes.Remove(EJT[i]);
+                                    partPairsToIgnore.Add(new Part[] { EJT[i].parts[0], EJT[i].parts[1] });
                                 }
                             }
                             else if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
