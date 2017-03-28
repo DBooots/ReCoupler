@@ -283,11 +283,12 @@ namespace ReCoupler
 
                     log.debug("Coupling " + couplePart.name + " to " + targetPart.name + ".");
 
-                    CoupleParts(coupleNode, targetNode);
-
                     if (!jt.isTrackingDockingPorts)
                         jt.destroyLink();
                     joints.Remove(jt);
+
+                    CoupleParts(coupleNode, targetNode);
+
                     combinedAny = true;
                     
                     //targetPart.vessel.currentStage = KSP.UI.Screens.StageManager.RecalculateVesselStaging(targetPart.vessel);
@@ -297,7 +298,20 @@ namespace ReCoupler
                 if (jt.parts[0].vessel != this.vessel && jt.parts[1].vessel != this.vessel)
                 {
                     log.debug("Removing joint between " + jt.parts[0].name + " and " + jt.parts[1].name + " because they are no longer part of this vessel.");
-                    jt.destroyLink();
+                    if (jt.parts[0].vessel == jt.parts[1].vessel)
+                    {
+                        log.debug("Adding them to vessel " + jt.parts[0].vessel.vesselName + " instead.");
+                        ReCouplerManager newManager = jt.parts[0].vessel.vesselModules.FirstOrDefault(vModule => vModule is ReCouplerManager) as ReCouplerManager;
+                        if (newManager != null)
+                        {
+                            newManager.joints.Add(jt);
+                            jt.combineCrossfeedSets();
+                        }
+                        else
+                            log.error("Except that vessel did not have a ReCouplerManager module! :o");
+                    }
+                    else
+                        jt.destroyLink();
                     joints.Remove(jt);
                     continue;
                 }
