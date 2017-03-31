@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using KSP.UI.Screens;
 using UnityEngine;
 
@@ -16,39 +15,6 @@ namespace ReCoupler
         
         public List<AttachNode> openNodes = new List<AttachNode>();
         public List<EditorJointTracker> hiddenNodes = new List<EditorJointTracker>();
-        
-        public class EditorJointTracker : AbstractJointTracker
-        {
-            public EditorJointTracker(AttachNode parentNode, AttachNode childNode) : base(parentNode, childNode)
-            {
-                this.SetNodes();
-                ConnectedLivingSpacesCompatibility.RequestAddConnection(parts[0], parts[1]);
-                ReCouplerUtils.onReCouplerEditorJointFormed.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
-            }
-
-            public EditorJointTracker(AbstractJointTracker parent) : base(parent.nodes[0], parent.nodes[1])
-            {
-                this.SetNodes();
-                ConnectedLivingSpacesCompatibility.RequestAddConnection(parts[0], parts[1]);
-                ReCouplerUtils.onReCouplerEditorJointFormed.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
-            }
-
-            public override void SetNodes()
-            {
-                base.SetNodes();
-                GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
-            }
-
-            public override void Destroy()
-            {
-                //UnsetModuleStructuralNode(nodes[0], structNodeMan[0]);
-                //UnsetModuleStructuralNode(nodes[1], structNodeMan[1]);
-                base.Destroy();
-                ConnectedLivingSpacesCompatibility.RequestRemoveConnection(parts[0], parts[1]);
-                ReCouplerUtils.onReCouplerEditorJointBroken.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
-                GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
-            }
-        }
         
         void Awake()
         {
@@ -249,6 +215,39 @@ namespace ReCoupler
                 }
                 reConstruct();
             }*/
+        }
+
+        public class EditorJointTracker : AbstractJointTracker
+        {
+            public EditorJointTracker(AttachNode parentNode, AttachNode childNode) : base(parentNode, childNode)
+            {
+                this.SetNodes();
+                ConnectedLivingSpacesCompatibility.RequestAddConnection(parts[0], parts[1]);
+                ReCouplerUtils.onReCouplerEditorJointFormed.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
+            }
+
+            public EditorJointTracker(AbstractJointTracker parent) : base(parent.nodes[0], parent.nodes[1])
+            {
+                this.SetNodes();
+                ConnectedLivingSpacesCompatibility.RequestAddConnection(parts[0], parts[1]);
+                ReCouplerUtils.onReCouplerEditorJointFormed.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
+            }
+
+            public override void SetNodes()
+            {
+                base.SetNodes();
+                GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
+            }
+
+            public override void Destroy()
+            {
+                //UnsetModuleStructuralNode(nodes[0], structNodeMan[0]);
+                //UnsetModuleStructuralNode(nodes[1], structNodeMan[1]);
+                base.Destroy();
+                ConnectedLivingSpacesCompatibility.RequestRemoveConnection(parts[0], parts[1]);
+                ReCouplerUtils.onReCouplerEditorJointBroken.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
+                GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
+            }
         }
     }
 }

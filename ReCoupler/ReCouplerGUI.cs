@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEngine;
 using KSP.UI.Screens;
 
@@ -277,11 +276,11 @@ namespace ReCoupler
             if (_highlightOn || _highlightWasOn || selectActive)
             {
                 if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
-                    jointsInvolved = EditorReCoupler.Instance.hiddenNodes.ConvertAll(x => (AbstractJointTracker)x);
+                    jointsInvolved = EditorReCoupler.Instance.hiddenNodes.CastList<AbstractJointTracker,EditorReCoupler.EditorJointTracker>();
                 else if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && FlightReCoupler.Instance != null)
                 {
                     if (FlightReCoupler.Instance.trackedJoints.ContainsKey(FlightGlobals.ActiveVessel))
-                        jointsInvolved = FlightReCoupler.Instance.trackedJoints[FlightGlobals.ActiveVessel].ConvertAll(x => (AbstractJointTracker)x);
+                        jointsInvolved = FlightReCoupler.Instance.trackedJoints[FlightGlobals.ActiveVessel].CastList<AbstractJointTracker,FlightReCoupler.FlightJointTracker>();
                     else
                     {
                         jointsInvolved = null;

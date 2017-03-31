@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEngine;
 
 namespace ReCoupler
@@ -20,7 +18,7 @@ namespace ReCoupler
         }
     }
 
-    public class ReCouplerUtils
+    public static class ReCouplerUtils
     {
         public static EventData<GameEvents.HostedFromToAction<Vessel, Part>> onReCouplerJointFormed;
         public static EventData<GameEvents.HostedFromToAction<Vessel, Part>> onReCouplerJointBroken;
@@ -33,6 +31,17 @@ namespace ReCoupler
         {
             EditorJointTracker,
             FlightJointTracker
+        }
+
+        public static List<TBase> CastList<TBase, TDerived>(this IList<TDerived> c) where TDerived : class, TBase
+        {
+            int count = c.Count;
+            List<TBase> value = new List<TBase>(count);
+            for (int i = 0; i < count; i++)
+            {
+                value.Add((TBase)c[i]);
+            }
+            return value;
         }
 
         public static IEnumerable<FlightReCoupler.FlightJointTracker> Generate_Flight(Vessel vessel, List<AttachNode> openNodes = null)
@@ -63,7 +72,7 @@ namespace ReCoupler
             }
         }
 
-        internal protected static IEnumerable<AbstractJointTracker> checkPartsList(List<Part> parts, List<AttachNode> openNodes, JointType jointType)
+        internal static IEnumerable<AbstractJointTracker> checkPartsList(List<Part> parts, List<AttachNode> openNodes, JointType jointType)
         {
             for (int i = 0; i < parts.Count; i++)
             {
@@ -72,7 +81,7 @@ namespace ReCoupler
             }
         }
 
-        internal protected static IEnumerable<AbstractJointTracker> checkPartNodes(Part part, List<AttachNode> openNodes, JointType jointType, bool recursive = false)
+        internal static IEnumerable<AbstractJointTracker> checkPartNodes(Part part, List<AttachNode> openNodes, JointType jointType, bool recursive = false)
         {
             List<AttachNode> partNodes = findOpenNodes(part);
 

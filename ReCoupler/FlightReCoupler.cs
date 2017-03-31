@@ -2,8 +2,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEngine;
+using System.Collections.ObjectModel;   // Does not work in .NET 3.5 for ObservableCollection.
+//Using my own implementation instead.
+using ObservableCollection;
 
 namespace ReCoupler
 {
@@ -14,15 +16,15 @@ namespace ReCoupler
 
         internal static Logger log = new Logger("ReCoupler: FlightReCoupler: ");
 
-        public Dictionary<Vessel, List<FlightJointTracker>> trackedJoints = new Dictionary<Vessel, List<FlightJointTracker>>();
+        public Dictionary<Vessel, ObservableCollection<FlightJointTracker>> trackedJoints = new Dictionary<Vessel, ObservableCollection<FlightJointTracker>>();
         public List<FlightJointTracker> allJoints
         {
             get
             {
-                if (_dictChanged)//!(trackedJoints.GetHashCode() == _dictionaryHash))
+                if (_dictChanged)
                 {
                     _allJoints.Clear();
-                    foreach (List<FlightJointTracker> joints in trackedJoints.Values)
+                    foreach (IList<FlightJointTracker> joints in trackedJoints.Values)
                     {
                         _allJoints.AddRange(joints);
                     }
@@ -64,8 +66,7 @@ namespace ReCoupler
         {
             if (!trackedJoints.ContainsKey(vessel))
                 return;
-            clearJoints(vessel);
-            trackedJoints.Remove(vessel);
+            clearJoints(vessel);    // Also removes it from the dictionary.
         }
 
         private void onPartDie(Part part)
@@ -101,7 +102,7 @@ namespace ReCoupler
         IEnumerator DelayedUpdate(int time)
         {
             yield return new WaitForFixedUpdate();
-            log.debug("Running DelayedUpdate");
+            log.debug("Running DelayedUpdate: " + Planetarium.GetUniversalTime());
             List<Vessel> vessels = trackedJoints.Keys.ToList();
             for (int i = vessels.Count - 1; i >= 0; i--)
             {
@@ -167,7 +168,7 @@ namespace ReCoupler
                         {
                             log.debug("Adding them to vessel " + jt.parts[0].vessel.vesselName + " instead.");
                             if (!trackedJoints.ContainsKey(jt.parts[0].vessel))
-                                trackedJoints.Add(jt.parts[0].vessel, new List<FlightJointTracker>());
+                                addNewVesselToDict(jt.parts[0].vessel);
                             trackedJoints[jt.parts[0].vessel].Add(jt);
                             jt.combineCrossfeedSets();
                         }
@@ -198,7 +199,7 @@ namespace ReCoupler
             Part brokenPart = data.origin;
             if (!trackedJoints.ContainsKey(brokenPart.vessel))
                 return;
-            List<FlightJointTracker> joints = trackedJoints[brokenPart.vessel];
+            IList<FlightJointTracker> joints = trackedJoints[brokenPart.vessel];
             for (int i = joints.Count - 1; i >= 0; i--)
             {
                 if (joints[i].parts.Contains(brokenPart))
@@ -232,8 +233,8 @@ namespace ReCoupler
             if (!vessel.loaded || vessel.packed)
                 return;
             if (!trackedJoints.ContainsKey(vessel))
-                trackedJoints.Add(vessel, new List<FlightJointTracker>());
-            List<FlightJointTracker> joints = trackedJoints[vessel];
+                addNewVesselToDict(vessel);
+            IList<FlightJointTracker> joints = trackedJoints[vessel];
 
             for (int j = joints.Count - 1; j >= 0; j--)
             {
@@ -294,7 +295,7 @@ namespace ReCoupler
         {
             log.debug("generateJoints: " + vessel.vesselName);
             if (!trackedJoints.ContainsKey(vessel))
-                trackedJoints.Add(vessel, new List<FlightJointTracker>());
+                addNewVesselToDict(vessel);
             List<Part> vesselParts = vessel.parts;
 
             List<Part> childen;
@@ -354,13 +355,14 @@ namespace ReCoupler
             for (int i = trackedJoints[vessel].Count - 1; i >= 0; i--)
                 trackedJoints[vessel][i].Destroy();
             trackedJoints.Remove(vessel);
+            _dictChanged = true;
         }
 
         public void regenerateJoints(Vessel vessel)
         {
             if (trackedJoints.ContainsKey(vessel))
                 clearJoints(vessel);
-            trackedJoints.Add(vessel, new List<FlightJointTracker>());
+            addNewVesselToDict(vessel);
             foreach (FlightJointTracker joint in ReCouplerUtils.Generate_Flight(vessel))
             {
                 trackedJoints[vessel].Add(joint);
@@ -374,6 +376,21 @@ namespace ReCoupler
             {
                 regenerateJoints(vessels[i]);
             }
+        }
+
+        public void addNewVesselToDict(Vessel vessel)
+        {
+            if (!trackedJoints.ContainsKey(vessel))
+            {
+                trackedJoints.Add(vessel, new ObservableCollection<FlightJointTracker>());
+                _dictChanged = true;
+                trackedJoints[vessel].CollectionChanged += FlightReCoupler_CollectionChanged;
+            }
+        }
+
+        private void FlightReCoupler_CollectionChanged(object sender, EventArgs e)
+        {
+            _dictChanged = true;
         }
 
         public class FlightJointTracker : AbstractJointTracker
