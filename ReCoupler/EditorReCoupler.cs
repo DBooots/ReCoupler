@@ -12,64 +12,41 @@ namespace ReCoupler
     {
         public static EditorReCoupler Instance;
 
-        Logger log = new Logger("EditorReCoupler: ");
+        Logger log = new Logger("ReCoupler: EditorReCoupler: ");
         
         public List<AttachNode> openNodes = new List<AttachNode>();
         public List<EditorJointTracker> hiddenNodes = new List<EditorJointTracker>();
-
-        public float connectRadius = ReCouplerSettings.connectRadius_default;
-        public float connectAngle = ReCouplerSettings.connectAngle_default;
         
-        public class EditorJointTracker
+        public class EditorJointTracker : AbstractJointTracker
         {
-            public List<AttachNode> nodes;
-            public List<Part> parts;
-
-            private List<bool> structNodeMan = new List<bool> { false, false };
-
-            public EditorJointTracker(IList<AttachNode> nodes)
+            public EditorJointTracker(AttachNode parentNode, AttachNode childNode) : base(parentNode, childNode)
             {
-                this.nodes = nodes.ToList();
-                this.parts = new List<Part> { nodes[0].owner, nodes[1].owner };
+                this.SetNodes();
+                ConnectedLivingSpacesCompatibility.RequestAddConnection(parts[0], parts[1]);
+                ReCouplerUtils.onReCouplerEditorJointFormed.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
             }
 
-            public void Create()
+            public EditorJointTracker(AbstractJointTracker parent) : base(parent.nodes[0], parent.nodes[1])
             {
-                nodes[0].attachedPart = parts[1];
-                nodes[1].attachedPart = parts[0];
+                this.SetNodes();
+                ConnectedLivingSpacesCompatibility.RequestAddConnection(parts[0], parts[1]);
+                ReCouplerUtils.onReCouplerEditorJointFormed.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
+            }
+
+            public override void SetNodes()
+            {
+                base.SetNodes();
                 GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
             }
 
-            public void Destroy()
+            public override void Destroy()
             {
                 //UnsetModuleStructuralNode(nodes[0], structNodeMan[0]);
                 //UnsetModuleStructuralNode(nodes[1], structNodeMan[1]);
-                nodes[0].attachedPart = null;
-                nodes[1].attachedPart = null;
+                base.Destroy();
+                ConnectedLivingSpacesCompatibility.RequestRemoveConnection(parts[0], parts[1]);
+                ReCouplerUtils.onReCouplerEditorJointBroken.Fire(new GameEvents.FromToAction<Part, Part>(this.parts[0], this.parts[1]));
                 GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
-            }
-
-            private static bool SetModuleStructuralNode(AttachNode node)
-            {
-                bool structNodeMan = false;
-                ModuleStructuralNode structuralNode = node.owner.FindModulesImplementing<ModuleStructuralNode>().FirstOrDefault(msn => msn.attachNodeNames.Equals(node.id));
-                if (structuralNode != null)
-                {
-                    structNodeMan = structuralNode.spawnManually;
-                    structuralNode.spawnManually = true;
-                    structuralNode.SpawnStructure();
-                }
-                return structNodeMan;
-            }
-
-            private static void UnsetModuleStructuralNode(AttachNode node, bool structNodeMan)
-            {
-                ModuleStructuralNode structuralNode = node.owner.FindModulesImplementing<ModuleStructuralNode>().FirstOrDefault(msn => msn.attachNodeNames.Equals(node.id));
-                if (structuralNode != null)
-                {
-                    structuralNode.DespawnStructure();
-                    structuralNode.spawnManually = structNodeMan;
-                }
             }
         }
         
@@ -82,15 +59,13 @@ namespace ReCoupler
 
         void Start()
         {
-            ReCouplerSettings.LoadSettings(out connectRadius, out connectAngle);
-
-            log.debug("Registering GameEvents.");
+            ReCouplerSettings.LoadSettings();
+            
             GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
             GameEvents.onEditorRedo.Add(OnEditorUnRedo);
             GameEvents.onEditorUndo.Add(OnEditorUnRedo);
             GameEvents.onEditorLoad.Add(OnEditorLoad);
             GameEvents.onEditorRestart.Add(OnEditorRestart);
-            GameEvents.onLevelWasLoaded.Add(OnLevelWasLoaded);
 
             GameEvents.onGameSceneSwitchRequested.Add(OnGameSceneSwitchRequested);
 
@@ -100,13 +75,11 @@ namespace ReCoupler
 
         public void OnDestroy()
         {
-            log.debug("Unregistering GameEvents.");
             GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
             GameEvents.onEditorRedo.Remove(OnEditorUnRedo);
             GameEvents.onEditorUndo.Remove(OnEditorUnRedo);
             GameEvents.onEditorLoad.Remove(OnEditorLoad);
             GameEvents.onEditorRestart.Remove(OnEditorRestart);
-            GameEvents.onLevelWasLoaded.Remove(OnLevelWasLoaded);
 
             GameEvents.onGameSceneSwitchRequested.Remove(OnGameSceneSwitchRequested);
 
@@ -125,12 +98,6 @@ namespace ReCoupler
             }
         }
 
-        private void OnLevelWasLoaded(GameScenes data)
-        {
-            if (HighLogic.LoadedSceneIsEditor)
-                reConstruct();
-        }
-
         private void OnEditorRestart()
         {
             reConstruct();
@@ -144,76 +111,24 @@ namespace ReCoupler
             }
         }
 
-        /*public void OnEditorShipModified(ShipConstruct ship)
-        {
-            reConstruct(ship);
-        }*/
-
         public void generateFromShipConstruct(ShipConstruct ship)
         {
-            openNodes = new List<AttachNode>();
+            openNodes.Clear();
             //foreach(Part part in ship.Parts)
             for (int i = 0; i < ship.Parts.Count; i++)
             {
                 //checkPartNodes(part);
-                List<AttachNode> problemNodes = ReCouplerManager.findProblemNodes(ship.Parts[i]);
+                List<AttachNode> problemNodes = ReCouplerUtils.findProblemNodes(ship.Parts[i]);
                 for (int j = problemNodes.Count - 1; j >= 0; j--)
                     if (!hiddenNodes.Any((EditorJointTracker jt) => jt.nodes.Contains(problemNodes[j])))
                         problemNodes[j].attachedPart = null;
 
-                checkPartNodes(ship.Parts[i]);
+                //checkPartNodes(ship.Parts[i]);
             }
-        }
-
-        public void checkPartNodes(Part part, bool recursive = false)
-        {
-            if (part == null)
+            foreach (EditorJointTracker joint in ReCouplerUtils.Generate_Editor(ship, openNodes))
             {
-                log.error("checkPartNodes(part): part is null!");
-                return;
+                hiddenNodes.Add(joint);
             }
-
-            List<AttachNode> partNodes = ReCouplerManager.findOpenNodes(part);
-
-            if (recursive)
-            {
-                Part[] children = part.FindChildParts<Part>(true);
-                partNodes.AddRange(ReCouplerManager.findOpenNodes(children));
-            }
-
-            List<AttachNode> partNodesToAdd = new List<AttachNode>();
-
-            //foreach (AttachNode node in partNodes)
-            for (int i = 0; i < partNodes.Count; i++)
-            {
-                bool doNotJoin = false;
-                foreach (ModuleCargoBay cargoBay in part.FindModulesImplementing<ModuleCargoBay>())
-                {
-                    if (cargoBay.nodeInnerForeID == partNodes[i].id || cargoBay.nodeInnerAftID == partNodes[i].id)
-                    {
-                        doNotJoin = true;
-                        break;
-                    }
-                }
-                if (doNotJoin)
-                    continue;
-
-                AttachNode closestNode = ReCouplerManager.getEligiblePairing(partNodes[i], openNodes, connectRadius, connectAngle);
-                if (closestNode != null)
-                {
-                    EditorJointTracker newJointTracker = new EditorJointTracker(new List<AttachNode> { partNodes[i], closestNode });
-                    hiddenNodes.Add(newJointTracker);
-                    newJointTracker.Create();
-                    openNodes.Remove(closestNode);
-
-                    ConnectedLivingSpacesCompatibility.RequestAddConnection(newJointTracker.parts[0], newJointTracker.parts[1]);
-
-                    //ReCouplerManager.combineCrossfeedSets(closestNode.owner, partNodes[i].owner);
-                }
-                else
-                    partNodesToAdd.Add(partNodes[i]);
-            }
-            openNodes.AddRange(partNodesToAdd);
         }
 
         public void reConstruct(ShipConstruct ship)
@@ -222,11 +137,10 @@ namespace ReCoupler
             
             for (int i = hiddenNodes.Count - 1; i >= 0; i--)
             {
-                ConnectedLivingSpacesCompatibility.RequestRemoveConnection(hiddenNodes[i].parts[0], hiddenNodes[i].parts[1]);
                 hiddenNodes[i].Destroy();
             }
             hiddenNodes.Clear();
-            openNodes.Clear();
+            //openNodes.Clear();
 
             if (ship == null)
             {
@@ -273,7 +187,7 @@ namespace ReCoupler
                 children.AddRange(part.FindChildParts<Part>(true));
                 for (int i = children.Count - 1; i >= 0; i--)
                 {
-                    List<AttachNode> problemNodes = ReCouplerManager.findProblemNodes(children[i]);
+                    List<AttachNode> problemNodes = ReCouplerUtils.findProblemNodes(children[i]);
                     for (int j = problemNodes.Count - 1; j >= 0; j--)
                         problemNodes[j].attachedPart = null;
                 }

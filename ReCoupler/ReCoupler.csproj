@@ -51,13 +51,16 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AbstractJointTracker.cs" />
     <Compile Include="ConnectedLivingSpacesCompatibility.cs" />
     <Compile Include="EditorReCoupler.cs" />
+    <Compile Include="FlightReCoupler.cs" />
     <Compile Include="Logger.cs" />
-    <Compile Include="ReCoupler.cs" />
+    <Compile Include="ReCouplerUtils.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ReCouplerGUI.cs" />
     <Compile Include="ReCouplerSettings.cs" />
+    <Compile Include="ToolbarWrapper.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
