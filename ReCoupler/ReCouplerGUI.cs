@@ -8,7 +8,7 @@ using KSP.UI.Screens;
 namespace ReCoupler
 {
     [KSPAddon(KSPAddon.Startup.FlightAndEditor, false)]
-    class ReCouplerGUI : MonoBehaviour
+    public class ReCouplerGUI : MonoBehaviour
     {
         public static ReCouplerGUI Instance;
 
@@ -34,15 +34,18 @@ namespace ReCoupler
         private bool _highlightOn = false;
         private bool _highlightWasOn = false;
         private bool selectActive = false;
-        private const string iconPath = "ReCoupler/Recoupler_Icon";
-        private const string iconPath_off = "ReCoupler/Recoupler_Icon_off";
+        private const string iconPath = "ReCoupler/ReCoupler_Icon";
+        private const string iconPath_off = "ReCoupler/ReCoupler_Icon_off";
+        private const string iconPath_blizzy = "ReCoupler/ReCoupler_blizzy_Icon";
+        private const string iconPath_blizzy_off = "ReCoupler/ReCoupler_blizzy_Icon_off";
         private string connectRadius_string = ReCouplerSettings.connectRadius_default.ToString();
         private string connectAngle_string = ReCouplerSettings.connectAngle_default.ToString();
         protected Rect ReCouplerWindow;
         private int guiId;
         public bool appLauncherEventSet = false;
 
-        public ApplicationLauncherButton button = null;
+        private static ApplicationLauncherButton button = null;
+        internal static IButton blizzyToolbarButton = null;
 
         Logger log = new Logger("ReCouplerGui: ");
 
@@ -52,9 +55,12 @@ namespace ReCoupler
                 Destroy(Instance);
             Instance = this;
 
-            //log.debug("Registering GameEvents.");
-            appLauncherEventSet = true;
-            GameEvents.onGUIApplicationLauncherReady.Add(OnGuiApplicationLauncherReady);
+            if (!ActivateBlizzyToolBar())
+            {
+                //log.debug("Registering GameEvents.");
+                appLauncherEventSet = true;
+                GameEvents.onGUIApplicationLauncherReady.Add(OnGuiApplicationLauncherReady);
+            }
             guiId = GUIUtility.GetControlID(FocusType.Passive);
         }
 
@@ -71,19 +77,56 @@ namespace ReCoupler
                 GameDatabase.Instance.GetTexture(iconPath, false));
         }
 
+        internal bool ActivateBlizzyToolBar()
+        {
+            try
+            {
+                if (!ToolbarManager.ToolbarAvailable) return false;
+                if (HighLogic.LoadedScene != GameScenes.EDITOR && HighLogic.LoadedScene != GameScenes.FLIGHT) return true;
+                blizzyToolbarButton = ToolbarManager.Instance.add("ReCoupler", "ReCoupler");
+                blizzyToolbarButton.TexturePath = iconPath_blizzy;
+                blizzyToolbarButton.ToolTip = "ReCoupler";
+                blizzyToolbarButton.Visible = true;
+                blizzyToolbarButton.OnClick += (e) =>
+                {
+                    onButtonToggle();
+                };
+                return true;
+            }
+            catch
+            {
+                // Blizzy Toolbar instantiation error.  ignore.
+                return false;
+            }
+        }
+
+        public void onButtonToggle()
+        {
+            if (!GUIVisible)
+                onTrue();
+            else
+                onFalse();
+        }
+
         public void onTrue()
         {
             connectRadius_string = ReCouplerSettings.connectRadius.ToString();
             connectAngle_string = ReCouplerSettings.connectAngle.ToString();
             GUIVisible = true;
-            button.SetTexture(GameDatabase.Instance.GetTexture(iconPath_off, false));
+            if (button != null)
+                button.SetTexture(GameDatabase.Instance.GetTexture(iconPath_off, false));
+            if (blizzyToolbarButton != null)
+                blizzyToolbarButton.TexturePath = iconPath_blizzy_off;
         }
         public void onFalse()
         {
             _highlightOn = false;
             selectActive = false;
             GUIVisible = false;
-            button.SetTexture(GameDatabase.Instance.GetTexture(iconPath, false));
+            if (button != null)
+                button.SetTexture(GameDatabase.Instance.GetTexture(iconPath, false));
+            if (blizzyToolbarButton != null)
+                blizzyToolbarButton.TexturePath = iconPath_blizzy;
         }
 
         public void Start()
@@ -101,6 +144,8 @@ namespace ReCoupler
                 }
                 if(appLauncherEventSet)
                     GameEvents.onGUIApplicationLauncherReady.Remove(OnGuiApplicationLauncherReady);
+                if (blizzyToolbarButton != null)
+                    blizzyToolbarButton.Destroy();
             }
         }
 
@@ -111,6 +156,8 @@ namespace ReCoupler
                 GameEvents.onGUIApplicationLauncherReady.Remove(OnGuiApplicationLauncherReady);
             if (button != null)
                 ApplicationLauncher.Instance.RemoveModApplication(button);
+            if (blizzyToolbarButton != null)
+                blizzyToolbarButton.Destroy();
         }
 
         public void OnGUI()
@@ -199,7 +246,10 @@ namespace ReCoupler
             exitButton.hover.textColor = exitButton.active.textColor = Color.red;
             if (GUI.Button(new Rect(ReCouplerWindow.width - 18, 2, 16, 16), "X", exitButton))
             {
-                button.SetFalse(true);
+                if (button != null)
+                    button.SetFalse(true);
+                else
+                    onFalse();
             }
             GUI.DragWindow();  //new Rect(0, 0, 10000, 20)
         }
