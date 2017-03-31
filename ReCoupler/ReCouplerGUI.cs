@@ -29,8 +29,7 @@ namespace ReCoupler
                     _highlightOn = value;
             }
         }
-
-        private EditorReCoupler editorInstance;
+        
         private bool _highlightOn = false;
         private bool _highlightWasOn = false;
         private bool selectActive = false;
@@ -42,7 +41,9 @@ namespace ReCoupler
         private string connectAngle_string = ReCouplerSettings.connectAngle_default.ToString();
         protected Rect ReCouplerWindow;
         private int guiId;
+        internal protected List<AbstractJointTracker> jointsInvolved = null;
         public bool appLauncherEventSet = false;
+        private List<Part> highlightedParts = new List<Part>();
 
         private static ApplicationLauncherButton button = null;
         internal static IButton blizzyToolbarButton = null;
@@ -198,15 +199,13 @@ namespace ReCoupler
             if (GUILayout.Button("Reset links", HighLogic.LoadedSceneIsFlight ? standardButton : disabledButton))
             {
                 partPairsToIgnore.Clear();
-                if (HighLogic.LoadedSceneIsFlight)
+                if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
                 {
-                    ReCouplerManager manager = null;
-                    if (FlightGlobals.ActiveVessel != null)
-                        manager = FlightGlobals.ActiveVessel.vesselModules.FirstOrDefault(vModule => vModule is ReCouplerManager) as ReCouplerManager;
-                    if (manager != null)
-                    {
-                        manager.generateJoints();
-                    }
+                    FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
+                }
+                else if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
+                {
+                    EditorReCoupler.Instance.reConstruct();
                 }
             }
             GUILayout.Space(10);
@@ -223,21 +222,14 @@ namespace ReCoupler
             if (GUILayout.Button("Apply", standardButton))
             {
                 float connectRadius_set, connectAngle_set;
-                ReCouplerManager manager = null;
-                if (FlightGlobals.ActiveVessel != null)
-                    manager = FlightGlobals.ActiveVessel.vesselModules.FirstOrDefault(vModule => vModule is ReCouplerManager) as ReCouplerManager;
                 if (float.TryParse(connectRadius_string, out connectRadius_set))
-                {
                     ReCouplerSettings.connectRadius = connectRadius_set;
-                    if (manager != null)
-                        manager.connectRadius = connectRadius_set;
-                }
                 if (float.TryParse(connectAngle_string, out connectAngle_set))
-                {
                     ReCouplerSettings.connectAngle = connectAngle_set;
-                    if (manager != null)
-                        manager.connectAngle = connectAngle_set;
-                }
+                if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
+                    EditorReCoupler.Instance.reConstruct();
+                else if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
+                    FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
             }
             GUILayout.EndVertical();
             
@@ -261,43 +253,63 @@ namespace ReCoupler
                 part.SetHighlightType(Part.HighlightType.AlwaysOn);
                 part.SetHighlightColor(colorSpectrum[colorIndx % colorSpectrum.Count]);
                 part.SetHighlight(true, false);
+                if (!highlightedParts.Contains(part))
+                    highlightedParts.Add(part);
             }
-            else if (_highlightWasOn)
+            else
             {
                 part.SetHighlightDefault();
+                highlightedParts.Remove(part);
+            }
+        }
+
+        public void resetHighlighting(List<Part> parts)
+        {
+            for (int i = parts.Count - 1; i >= 0; i--)
+            {
+                parts[i].SetHighlightDefault();
+                highlightedParts.Remove(parts[i]);
             }
         }
 
         public void Update()
         {
-            if (_highlightOn || _highlightWasOn)
+            if (_highlightOn || _highlightWasOn || selectActive)
             {
                 if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
+                    jointsInvolved = EditorReCoupler.Instance.hiddenNodes.ConvertAll(x => (AbstractJointTracker)x);
+                else if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && FlightReCoupler.Instance != null)
                 {
-                    editorInstance = EditorReCoupler.Instance;
-                    for (int i = 0; i < editorInstance.hiddenNodes.Count; i++)
+                    if (FlightReCoupler.Instance.trackedJoints.ContainsKey(FlightGlobals.ActiveVessel))
+                        jointsInvolved = FlightReCoupler.Instance.trackedJoints[FlightGlobals.ActiveVessel].ConvertAll(x => (AbstractJointTracker)x);
+                    else
                     {
-                        for (int j = editorInstance.hiddenNodes[i].parts.Count - 1; j >= 0; j--)
-                        {
-                            highlightPart(editorInstance.hiddenNodes[i].parts[j], i);
-                        }
+                        jointsInvolved = null;
+                        log.debug("ActiveVessel is not in the dictionary!");
                     }
                 }
-                else if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
+                else
                 {
-                    ReCouplerManager manager = FlightGlobals.ActiveVessel.vesselModules.FirstOrDefault(vModule => vModule is ReCouplerManager) as ReCouplerManager;
-                    if (manager == null)
-                    {
-                        log.error("Couldn't find ReCouplerManager VesselModule!");
-                        return;
-                    }
+                    jointsInvolved = null;
+                    log.error("Could not get active joints!");
+                    return;
+                }
+            }
+            if (jointsInvolved == null)
+            {
+                resetHighlighting(highlightedParts);
+                return;
+            }
+            if (highlightedParts.Count > 0)
+                resetHighlighting(highlightedParts.FindAll((Part part) => jointsInvolved.All(jt => !jt.parts.Contains(part))));
 
-                    for (int i = 0; i < manager.joints.Count; i++)
+            if (_highlightOn || _highlightWasOn)
+            {
+                for (int i = 0; i < jointsInvolved.Count; i++)
+                {
+                    for (int j = jointsInvolved[i].parts.Count - 1; j >= 0; j--)
                     {
-                        for (int j = manager.joints[i].parts.Count - 1; j >= 0; j--)
-                        {
-                            highlightPart(manager.joints[i].parts[j], i);
-                        }
+                        highlightPart(jointsInvolved[i].parts[j], i);
                     }
                 }
                 _highlightWasOn = _highlightOn;
@@ -320,43 +332,22 @@ namespace ReCoupler
                         if (hitPart != null)
                         {
                             log.debug("Raycast hit part " + hitPart.name);
-                            if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
+                            List<AbstractJointTracker> hitJoints = jointsInvolved.FindAll(j => j.parts.Contains(hitPart));
+                            for (int i = hitJoints.Count - 1; i>=0; i--)
                             {
-                                editorInstance = EditorReCoupler.Instance;
-                                List<EditorReCoupler.EditorJointTracker> EJT = editorInstance.hiddenNodes.FindAll(ejt => ejt.parts.Contains(hitPart));
-                                for (int i = EJT.Count - 1; i >= 0; i--)
+                                log.debug("Destroying link between " + hitJoints[i].parts[0].name + " and " + hitJoints[i].parts[1].name);
+                                hitJoints[i].Destroy();
+                                partPairsToIgnore.Add(hitJoints[i].parts.ToArray());
+                                if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
                                 {
-                                    EJT[i].Destroy();
-                                    editorInstance.hiddenNodes.Remove(EJT[i]);
-                                    partPairsToIgnore.Add(new Part[] { EJT[i].parts[0], EJT[i].parts[1] });
+                                    EditorReCoupler.Instance.hiddenNodes.Remove((EditorReCoupler.EditorJointTracker)hitJoints[i]);
                                 }
-                            }
-                            else if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
-                            {
-                                ReCouplerManager manager = FlightGlobals.ActiveVessel.vesselModules.FirstOrDefault(vModule => vModule is ReCouplerManager) as ReCouplerManager;
-                                if (manager == null)
+                                else if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null && FlightReCoupler.Instance.trackedJoints.ContainsKey(FlightGlobals.ActiveVessel))
                                 {
-                                    log.error("Couldn't find ReCouplerManager VesselModule!");
-                                    return;
+                                    FlightReCoupler.Instance.trackedJoints[FlightGlobals.ActiveVessel].Remove((FlightReCoupler.FlightJointTracker)hitJoints[i]);
                                 }
-
-                                List<ReCouplerManager.JointTracker> joints = manager.joints.FindAll(jt => jt.parts.Contains(hitPart));
-                                for (int i = joints.Count - 1; i >= 0; i--)
-                                {
-                                    log.debug("Destroying link between " + joints[i].parts[0].name + " and " + joints[i].parts[1].name);
-                                    joints[i].destroyLink();
-                                    foreach (ModuleDecouple decoupler in joints[i].decouplers)
-                                        manager.decouplersInvolved.Remove(decoupler);
-                                    if (joints[i].oldCrossfeedSets.Count > 0)
-                                    {
-                                        joints[i].parts[0].crossfeedPartSet = joints[i].oldCrossfeedSets[0];
-                                        joints[i].parts[1].crossfeedPartSet = joints[i].oldCrossfeedSets[1];
-                                    }
-                                    joints[i].parts[0].SetHighlightDefault();
-                                    joints[i].parts[1].SetHighlightDefault();
-                                    manager.joints.Remove(joints[i]);
-                                    partPairsToIgnore.Add(new Part[] { joints[i].parts[0], joints[i].parts[1] });
-                                }
+                                hitJoints[i].parts[0].SetHighlightDefault();
+                                hitJoints[i].parts[1].SetHighlightDefault();
                             }
                             selectActive = false;
                         }

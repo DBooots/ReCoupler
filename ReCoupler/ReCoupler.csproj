@@ -51,8 +51,10 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AbstractJointTracker.cs" />
     <Compile Include="ConnectedLivingSpacesCompatibility.cs" />
     <Compile Include="EditorReCoupler.cs" />
+    <Compile Include="FlightReCoupler.cs" />
     <Compile Include="Logger.cs" />
     <Compile Include="ReCouplerUtils.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

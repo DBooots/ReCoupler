@@ -13,10 +13,10 @@
         public static bool isCLSInstalled = false;
         public static bool settingsLoaded = false;
 
-        public static void LoadSettings(out float loadedRadius, out float loadedAngle)
+        public static void LoadSettings()
         {
-            loadedRadius = connectRadius;
-            loadedAngle = connectAngle;
+            float loadedRadius = connectRadius;
+            float loadedAngle = connectAngle;
             bool loadedShowGUI = showGUI;
             if (settingsLoaded)
                 return;
@@ -60,12 +60,6 @@
             }
 
             settingsLoaded = true;
-        }
-
-        public static void LoadSettings()
-        {
-            float tempFloat1, tempFloat2;
-            LoadSettings(out tempFloat1, out tempFloat2);
         }
     }
 }
