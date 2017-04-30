@@ -236,6 +236,11 @@ namespace ReCoupler
                     if (part.FindModulesImplementing<ModuleCargoBay>().Any(cargoBay => cargoBay.nodeInnerForeID == part.attachNodes[i].id || cargoBay.nodeInnerAftID == part.attachNodes[i].id))
                         doNotJoin = true;
 
+                    if (part.Modules.Contains("ModuleIRServo"))
+                        doNotJoin = true;
+                    if (part.Modules.Contains("MuMechToggle"))
+                        doNotJoin = true;
+
                     if (doNotJoin)
                         continue;
                 }
@@ -290,12 +295,141 @@ namespace ReCoupler
                 if (dist <= closestDist && Math.Abs(angleBtwn - 180) <= angle)
                 // but at least closer than the min radius because of the initialization of closestDist
                 {
+                    if (TreeHasKinks(checkNodes[j].owner, node.owner))
+                        continue;
+
                     log.debug(node.owner.name + "/" + checkNodes[j].owner.name + ": " + dist + "m, at " + angleBtwn + " deg.");
                     closestNode = checkNodes[j];
                 }
             }
 
             return closestNode;
+        }
+
+        public static bool TreeHasKinks(Part part1, Part part2)
+        {
+            try
+            {
+                int partsBetween = 0;
+                Part branchPart = FindCommonAncestor(part1, part2, out partsBetween);
+
+                // Populate Parts list
+                List<Part> partsToCheck = new List<Part>(partsBetween);
+                Part addPart;
+                if (branchPart != part1)
+                {
+                    addPart = part1;
+                    do
+                    {
+                        addPart = addPart.parent;
+                        partsToCheck.Add(addPart);
+                    } while (addPart != branchPart);
+                }
+                if (branchPart != part2)
+                {
+                    addPart = part2;
+                    do
+                    {
+                        addPart = addPart.parent;
+                        partsToCheck.Add(addPart);
+                    } while (addPart != branchPart);
+                }
+                partsToCheck.Remove(branchPart);
+
+                for (int i = partsToCheck.Count - 1; i >= 0; i--)
+                {
+                    if (PartIsInvalidForPath(partsToCheck[i]))
+                    {
+                        log.debug("Part: " + partsToCheck[i].name + " had an ineligible module.");
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                log.error("Encountered " + ex);
+                return true;
+            }
+        }
+
+        public static Part FindCommonAncestor(Part part1, Part part2, out int partsBetween)
+        {
+            Part rootPart1, rootPart2;
+            int lvlPart1 = FindPartLevel(part1, out rootPart1);
+            int lvlPart2 = FindPartLevel(part2, out rootPart2);
+            partsBetween = 0;
+            if (rootPart1 != rootPart2)
+            {
+                log.error("Parts are not part of the same tree.");
+                return null;
+            }
+
+            Part lowerPart, higherPart;
+            int lowerLvl, higherLvl;
+            if (lvlPart1 <= lvlPart2)
+            {
+                lowerPart = part2;
+                higherPart = part1;
+                lowerLvl = lvlPart2;
+                higherLvl = lvlPart1;
+            }
+            else
+            {
+                lowerPart = part1;
+                higherPart = part2;
+                lowerLvl = lvlPart1;
+                higherLvl = lvlPart2;
+            }
+            for (int lvl = lowerLvl; lvl > higherLvl; lvl--)
+            {
+                lowerPart = lowerPart.parent;
+                partsBetween += 1;
+            }
+            while (lowerPart != higherPart)
+            {
+                lowerPart = lowerPart.parent;
+                higherPart = higherPart.parent;
+                partsBetween += 2;
+            }
+            return lowerPart;
+        }
+
+        public static int FindPartLevel(Part part)
+        {
+            int lvl = 0;
+            Part checkPart = part;
+            while (checkPart.parent != null)
+            {
+                lvl += 1;
+                checkPart = checkPart.parent;
+            }
+            return lvl;
+        }
+
+        public static int FindPartLevel(Part part, out Part rootPart)
+        {
+            int lvl = 0;
+            Part checkPart = part;
+            while (checkPart.parent != null)
+            {
+                lvl += 1;
+                checkPart = checkPart.parent;
+            }
+            rootPart = checkPart;
+            return lvl;
+        }
+
+        public static bool PartIsInvalidForPath(Part part)
+        {
+            if (part.Modules.Contains("ModuleIRServo"))
+                return true;
+            if (part.Modules.Contains("MuMechToggle"))
+                return true;
+            if (part.Modules.Contains("ModuleGrappleNode"))
+                return true;
+            return false;
         }
 
         // Adapted from KASv1 by IgorZ
