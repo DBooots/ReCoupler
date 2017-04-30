@@ -434,15 +434,21 @@ namespace ReCoupler
 
         // Adapted from KASv1 by IgorZ
         // See https://github.com/ihsoft/KAS/tree/KAS-v1.0
+        // https://github.com/ihsoft/KAS/blob/KAS-v1.0/Source/api_impl/LinkUtilsImpl.cs#L50-L82
         // This method is in the public domain: https://github.com/ihsoft/KAS/blob/KAS-v1.0/LICENSE-1.0.md
         public static void CoupleParts(AttachNode sourceNode, AttachNode targetNode)
         {
-            var srcPart = sourceNode.owner;
-            var srcVessel = srcPart.vessel;
-            var trgPart = targetNode.owner;
-            var trgVessel = trgPart.vessel;
+            Part srcPart = sourceNode.owner;
+            Part trgPart = targetNode.owner;
+            CoupleParts(srcPart, trgPart, sourceNode, targetNode);
+        }
 
-            var vesselInfo = new DockedVesselInfo();
+        public static void CoupleParts(Part srcPart, Part trgPart, AttachNode sourceNode, AttachNode targetNode = null)
+        {
+            Vessel srcVessel = srcPart.vessel;
+            Vessel trgVessel = trgPart.vessel;
+
+            DockedVesselInfo vesselInfo = new DockedVesselInfo();
             vesselInfo.name = srcVessel.vesselName;
             vesselInfo.vesselType = srcVessel.vesselType;
             vesselInfo.rootPartUId = srcVessel.rootPart.flightID;
@@ -450,8 +456,19 @@ namespace ReCoupler
             GameEvents.onActiveJointNeedUpdate.Fire(srcVessel);
             GameEvents.onActiveJointNeedUpdate.Fire(trgVessel);
             sourceNode.attachedPart = trgPart;
-            targetNode.attachedPart = srcPart;
-            srcPart.attachMode = AttachModes.STACK;  // All KAS links are expected to be STACK.
+            sourceNode.attachedPartId = trgPart.flightID;
+            if (sourceNode.id != "srfAttach")
+            {
+                srcPart.attachMode = AttachModes.STACK;
+                if (targetNode != null)
+                    targetNode.attachedPart = srcPart;
+                else
+                    log.warning("Target node is null.");
+            }
+            else
+            {
+                srcPart.attachMode = AttachModes.SRF_ATTACH;
+            }
             srcPart.Couple(trgPart);
             // Depending on how active vessel has updated do either force active or make active. Note, that
             // active vessel can be EVA kerbal, in which case nothing needs to be adjusted.    
@@ -459,12 +476,10 @@ namespace ReCoupler
             if (srcVessel == FlightGlobals.ActiveVessel)
             {
                 FlightGlobals.ForceSetActiveVessel(sourceNode.owner.vessel);  // Use actual vessel.
-                //FlightInputHandler.SetNeutralControls();
             }
             else if (sourceNode.owner.vessel == FlightGlobals.ActiveVessel)
             {
                 sourceNode.owner.vessel.MakeActive();
-                //FlightInputHandler.SetNeutralControls();
             }
             GameEvents.onVesselWasModified.Fire(sourceNode.owner.vessel);
 
@@ -473,8 +488,6 @@ namespace ReCoupler
                 CoupleDockingPortWithPart(sourcePort);
             if (hasDockingPort(targetNode, out targetPort))
                 CoupleDockingPortWithPart(targetPort);
-
-            //return vesselInfo;
         }
 
         // Adapted from KIS by IgorZ

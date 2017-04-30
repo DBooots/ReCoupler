@@ -154,12 +154,14 @@ namespace ReCoupler
                         if (jt.Couple(ownerVessel: vessels[i]))
                         {
                             log.debug("Removing joint since it is now a real, coupled joint.");
+                            log.debug("Parent0: " + jt.parts[0].parent.name + " Parent1: " + jt.parts[1].parent.name);
                             trackedJoints[vessels[i]].Remove(jt);
                         }
                         else
                             log.error("Could not couple parts!");
 
                         combinedAny = true;
+                        continue;
                     }
                     else if (jt.parts[0].vessel != vessels[i] && jt.parts[1].vessel != vessels[i])
                     {
@@ -238,16 +240,37 @@ namespace ReCoupler
 
             for (int j = joints.Count - 1; j >= 0; j--)
             {
-                for (int d = joints[j].decouplers.Count - 1; d >=0; d--)
+                if (joints[j].decouplers.Any(d => d.isDecoupled))
                 {
-                    if(joints[j].decouplers[d].isDecoupled)
-                    {
-                        log.debug("Decoupler " + joints[j].decouplers[d].part.name + " decoupled. Removing from joints list.");
-                        joints[j].Destroy();
-                        joints.RemoveAt(j);
-                    }
+                    log.debug("Decoupler " + joints[j].decouplers.First(d => d.isDecoupled).part.name + " decoupled. Removing from joints list.");
+                    joints[j].Destroy();
+                    this.StartCoroutine(DelayedDecouplerCheck(joints[j], vessel));
+                    joints.RemoveAt(j);
+                    continue;
                 }
             }
+        }
+
+        IEnumerator DelayedDecouplerCheck(FlightJointTracker joint, Vessel owner)
+        {
+            FixedJoint[] tempJoints = new FixedJoint[2];
+            if (joint.ParentStillValid(0))
+            {
+                tempJoints[0] = joint.parts[0].gameObject.AddComponent<FixedJoint>();
+                tempJoints[0].connectedBody = joint.parents[0].part.Rigidbody;
+            }
+            if (joint.ParentStillValid(1))
+            {
+                tempJoints[1] = joint.parts[1].gameObject.AddComponent<FixedJoint>();
+                tempJoints[1].connectedBody = joint.parents[1].part.Rigidbody;
+            }
+            yield return new WaitForFixedUpdate();
+            if (tempJoints[0] != null)
+                DestroyImmediate(tempJoints[0]);
+            if (tempJoints[1] != null)
+                DestroyImmediate(tempJoints[1]);
+            log.debug("Running DelayedDecouplerCheck on " + owner.vesselName);
+            joint.PostDecouplerCheck();
         }
 
         public void checkActiveVessels()
@@ -395,8 +418,21 @@ namespace ReCoupler
 
         public class FlightJointTracker : AbstractJointTracker
         {
+            public struct Parent
+            {
+                public Part part;
+                public AttachNode node;
+                public AttachNode nodeTo;
+                public Parent(Part part, AttachNode node, AttachNode nodeTo)
+                {
+                    this.part = part;
+                    this.node = node;
+                    this.nodeTo = nodeTo;
+                }
+            }
+            public List<Parent> parents = new List<Parent>();
             public ConfigurableJoint joint = null;
-            public List<PartSet> oldCrossfeedSets = new List<PartSet>();
+            public List<PartSet> oldCrossfeedSets = new List<PartSet>(2);
             public bool linkCreated
             {
                 get { return joint != null || _isTrackingDockingPorts; }
@@ -433,6 +469,7 @@ namespace ReCoupler
                 this.joint = joint;
                 log = new Logger("ReCoupler: FlightJointTracker: " + parts[0].name + " and " + parts[1].name);
                 this._isTrackingDockingPorts = isTrackingDockingPorts;
+                this.CheckParents();
                 if (link)
                     this.CreateLink();
                 if (!isTrackingDockingPorts)
@@ -443,6 +480,7 @@ namespace ReCoupler
             {
                 log = new Logger("ReCoupler: FlightJointTracker: " + parts[0].name + " and " + parts[1].name + " ");
                 this._isTrackingDockingPorts = isTrackingDockingPorts;
+                this.CheckParents();
                 if (link)
                     this.CreateLink();
                 if (!isTrackingDockingPorts)
@@ -453,6 +491,7 @@ namespace ReCoupler
             {
                 log = new Logger("ReCoupler: FlightJointTracker: " + parts[0].name + " and " + parts[1].name + " ");
                 this._isTrackingDockingPorts = isTrackingDockingPorts;
+                this.CheckParents();
                 if (link)
                     this.CreateLink();
                 if (!isTrackingDockingPorts)
@@ -685,6 +724,57 @@ namespace ReCoupler
                     GameEvents.onVesselWasModified.Fire(parts[0].vessel);
                 else if (parts[1] != null && parts[1].vessel != null)
                     GameEvents.onVesselWasModified.Fire(parts[1].vessel);
+            }
+
+            private void CheckParents()
+            {
+                parents.Capacity = parts.Count;
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    if (parts[i].parent != null)
+                    {
+                        parents.Add(new Parent(parts[i].parent, parts[i].parent.FindAttachNodeByPart(parts[i]), parts[i].FindAttachNodeByPart(parts[i].parent)));
+                    }
+                }
+            }
+
+            public void PostDecouplerCheck()
+            {
+                for(int i = parts.Count - 1; i >= 0; i--)
+                {
+                    try
+                    {
+                        if (parts[i].vessel != parents[i].part.vessel && ParentStillValid(parents[i]))
+                        {
+                            log.debug("Coupling part to parent.");
+                            ReCouplerUtils.CoupleParts(parts[i], parents[i].part, parents[i].nodeTo, parents[i].node);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        log.error("Error in PostDecouplerCheck: " + ex);
+                    }
+                }
+            }
+
+            public bool ParentStillValid(int i) { return ParentStillValid(parents[i]); }
+
+            public static bool ParentStillValid(Parent parent)
+            {
+                if (parent.node == null)
+                    return true;
+
+                if (parent.part.FindModulesImplementing<ModuleDecouple>().Any(
+                    decoupler => decoupler.isDecoupled && (decoupler.ExplosiveNode == parent.node || decoupler.isOmniDecoupler)))
+                    return false;
+                if (parent.nodeTo.owner.FindModulesImplementing<ModuleDecouple>().Any(
+                    decoupler => decoupler.isDecoupled && (decoupler.ExplosiveNode == parent.nodeTo || decoupler.isOmniDecoupler)))
+                    return false;
+                    
+                // TODO:
+                //if (parent.part.FindModulesImplementing<ModuleDockingNode>().Any(dockingNode => dockingNode.referenceNode == parent.node))
+                //    return false;
+                return true;
             }
         }
     }
