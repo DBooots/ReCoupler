@@ -210,7 +210,7 @@ namespace ReCoupler
                 }
                 else if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
                 {
-                    EditorReCoupler.Instance.reConstruct();
+                    EditorReCoupler.Instance.ResetAndRebuild();
                 }
             }
             GUILayout.Space(10);
@@ -232,7 +232,7 @@ namespace ReCoupler
                 if (float.TryParse(connectAngle_string, out connectAngle_set))
                     ReCouplerSettings.connectAngle = connectAngle_set;
                 if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
-                    EditorReCoupler.Instance.reConstruct();
+                    EditorReCoupler.Instance.ResetAndRebuild();
                 else if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
                     FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
             }
