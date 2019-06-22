@@ -423,11 +423,16 @@ namespace ReCoupler
 
         public static bool PartIsInvalidForPath(Part part)
         {
-            if (part.Modules.Contains("ModuleIRServo"))
+            // Accounts for some Infernal Robotics Servos. (The mod is being revitalized currently and modern versions will likely comply with IJointLockState, handled below.
+            if (part.Modules.Contains("ModuleIRServo") || part.Modules.Contains("ServoMotor") || part.Modules.Contains("Servo"))
                 return true;
             if (part.Modules.Contains("MuMechToggle"))
                 return true;
-            if (part.Modules.Contains("ModuleGrappleNode"))
+            // Accounts for all current joints in Kerbal Attachment System.
+            if (part.Modules.Contains("AbstractJoint") || part.Modules.Contains("KASJointCableBase") || part.Modules.Contains("KASJointTwoEndsSphere") || part.Modules.Contains("KASJointTowBar") || part.Modules.Contains("KASJointRigid"))
+                return true;
+            // Accounts for ModuleGrappleNode and all of the Breaking Ground joints and servos.
+            if (part.FindModuleImplementing<IJointLockState>() != null)
                 return true;
             return false;
         }
