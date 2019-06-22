@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEngine;
 
 namespace ReCoupler
@@ -20,7 +18,7 @@ namespace ReCoupler
         }
     }
 
-    public class ReCouplerUtils
+    public static class ReCouplerUtils
     {
         public static EventData<GameEvents.HostedFromToAction<Vessel, Part>> onReCouplerJointFormed;
         public static EventData<GameEvents.HostedFromToAction<Vessel, Part>> onReCouplerJointBroken;
@@ -33,6 +31,17 @@ namespace ReCoupler
         {
             EditorJointTracker,
             FlightJointTracker
+        }
+
+        public static List<TBase> CastList<TBase, TDerived>(this IList<TDerived> c) where TDerived : class, TBase
+        {
+            int count = c.Count;
+            List<TBase> value = new List<TBase>(count);
+            for (int i = 0; i < count; i++)
+            {
+                value.Add((TBase)c[i]);
+            }
+            return value;
         }
 
         public static IEnumerable<FlightReCoupler.FlightJointTracker> Generate_Flight(Vessel vessel, List<AttachNode> openNodes = null)
@@ -63,7 +72,7 @@ namespace ReCoupler
             }
         }
 
-        internal protected static IEnumerable<AbstractJointTracker> checkPartsList(List<Part> parts, List<AttachNode> openNodes, JointType jointType)
+        internal static IEnumerable<AbstractJointTracker> checkPartsList(List<Part> parts, List<AttachNode> openNodes, JointType jointType)
         {
             for (int i = 0; i < parts.Count; i++)
             {
@@ -72,7 +81,7 @@ namespace ReCoupler
             }
         }
 
-        internal protected static IEnumerable<AbstractJointTracker> checkPartNodes(Part part, List<AttachNode> openNodes, JointType jointType, bool recursive = false)
+        internal static IEnumerable<AbstractJointTracker> checkPartNodes(Part part, List<AttachNode> openNodes, JointType jointType, bool recursive = false)
         {
             List<AttachNode> partNodes = findOpenNodes(part);
 
@@ -227,6 +236,11 @@ namespace ReCoupler
                     if (part.FindModulesImplementing<ModuleCargoBay>().Any(cargoBay => cargoBay.nodeInnerForeID == part.attachNodes[i].id || cargoBay.nodeInnerAftID == part.attachNodes[i].id))
                         doNotJoin = true;
 
+                    if (part.Modules.Contains("ModuleIRServo"))
+                        doNotJoin = true;
+                    if (part.Modules.Contains("MuMechToggle"))
+                        doNotJoin = true;
+
                     if (doNotJoin)
                         continue;
                 }
@@ -281,6 +295,9 @@ namespace ReCoupler
                 if (dist <= closestDist && Math.Abs(angleBtwn - 180) <= angle)
                 // but at least closer than the min radius because of the initialization of closestDist
                 {
+                    if (TreeHasKinks(checkNodes[j].owner, node.owner))
+                        continue;
+
                     log.debug(node.owner.name + "/" + checkNodes[j].owner.name + ": " + dist + "m, at " + angleBtwn + " deg.");
                     closestNode = checkNodes[j];
                 }
@@ -289,17 +306,154 @@ namespace ReCoupler
             return closestNode;
         }
 
+        public static bool TreeHasKinks(Part part1, Part part2)
+        {
+            try
+            {
+                int partsBetween = 0;
+                Part branchPart = FindCommonAncestor(part1, part2, out partsBetween);
+
+                // Populate Parts list
+                List<Part> partsToCheck = new List<Part>(partsBetween);
+                Part addPart;
+                if (branchPart != part1)
+                {
+                    addPart = part1;
+                    do
+                    {
+                        addPart = addPart.parent;
+                        partsToCheck.Add(addPart);
+                    } while (addPart != branchPart);
+                }
+                if (branchPart != part2)
+                {
+                    addPart = part2;
+                    do
+                    {
+                        addPart = addPart.parent;
+                        partsToCheck.Add(addPart);
+                    } while (addPart != branchPart);
+                }
+                partsToCheck.Remove(branchPart);
+
+                for (int i = partsToCheck.Count - 1; i >= 0; i--)
+                {
+                    if (PartIsInvalidForPath(partsToCheck[i]))
+                    {
+                        log.debug("Part: " + partsToCheck[i].name + " had an ineligible module.");
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                log.error("Encountered " + ex);
+                return true;
+            }
+        }
+
+        public static Part FindCommonAncestor(Part part1, Part part2, out int partsBetween)
+        {
+            Part rootPart1, rootPart2;
+            int lvlPart1 = FindPartLevel(part1, out rootPart1);
+            int lvlPart2 = FindPartLevel(part2, out rootPart2);
+            partsBetween = 0;
+            if (rootPart1 != rootPart2)
+            {
+                log.error("Parts are not part of the same tree.");
+                return null;
+            }
+
+            Part lowerPart, higherPart;
+            int lowerLvl, higherLvl;
+            if (lvlPart1 <= lvlPart2)
+            {
+                lowerPart = part2;
+                higherPart = part1;
+                lowerLvl = lvlPart2;
+                higherLvl = lvlPart1;
+            }
+            else
+            {
+                lowerPart = part1;
+                higherPart = part2;
+                lowerLvl = lvlPart1;
+                higherLvl = lvlPart2;
+            }
+            for (int lvl = lowerLvl; lvl > higherLvl; lvl--)
+            {
+                lowerPart = lowerPart.parent;
+                partsBetween += 1;
+            }
+            while (lowerPart != higherPart)
+            {
+                lowerPart = lowerPart.parent;
+                higherPart = higherPart.parent;
+                partsBetween += 2;
+            }
+            return lowerPart;
+        }
+
+        public static int FindPartLevel(Part part)
+        {
+            int lvl = 0;
+            Part checkPart = part;
+            while (checkPart.parent != null)
+            {
+                lvl += 1;
+                checkPart = checkPart.parent;
+            }
+            return lvl;
+        }
+
+        public static int FindPartLevel(Part part, out Part rootPart)
+        {
+            int lvl = 0;
+            Part checkPart = part;
+            while (checkPart.parent != null)
+            {
+                lvl += 1;
+                checkPart = checkPart.parent;
+            }
+            rootPart = checkPart;
+            return lvl;
+        }
+
+        public static bool PartIsInvalidForPath(Part part)
+        {
+            // Accounts for some Infernal Robotics Servos. (The mod is being revitalized currently and modern versions will likely comply with IJointLockState, handled below.
+            if (part.Modules.Contains("ModuleIRServo") || part.Modules.Contains("ServoMotor") || part.Modules.Contains("Servo"))
+                return true;
+            if (part.Modules.Contains("MuMechToggle"))
+                return true;
+            // Accounts for all current joints in Kerbal Attachment System.
+            if (part.Modules.Contains("AbstractJoint") || part.Modules.Contains("KASJointCableBase") || part.Modules.Contains("KASJointTwoEndsSphere") || part.Modules.Contains("KASJointTowBar") || part.Modules.Contains("KASJointRigid"))
+                return true;
+            // Accounts for ModuleGrappleNode and all of the Breaking Ground joints and servos.
+            if (part.FindModuleImplementing<IJointLockState>() != null)
+                return true;
+            return false;
+        }
+
         // Adapted from KASv1 by IgorZ
         // See https://github.com/ihsoft/KAS/tree/KAS-v1.0
+        // https://github.com/ihsoft/KAS/blob/KAS-v1.0/Source/api_impl/LinkUtilsImpl.cs#L50-L82
         // This method is in the public domain: https://github.com/ihsoft/KAS/blob/KAS-v1.0/LICENSE-1.0.md
         public static void CoupleParts(AttachNode sourceNode, AttachNode targetNode)
         {
-            var srcPart = sourceNode.owner;
-            var srcVessel = srcPart.vessel;
-            var trgPart = targetNode.owner;
-            var trgVessel = trgPart.vessel;
+            Part srcPart = sourceNode.owner;
+            Part trgPart = targetNode.owner;
+            CoupleParts(srcPart, trgPart, sourceNode, targetNode);
+        }
 
-            var vesselInfo = new DockedVesselInfo();
+        public static void CoupleParts(Part srcPart, Part trgPart, AttachNode sourceNode, AttachNode targetNode = null)
+        {
+            Vessel srcVessel = srcPart.vessel;
+            Vessel trgVessel = trgPart.vessel;
+
+            DockedVesselInfo vesselInfo = new DockedVesselInfo();
             vesselInfo.name = srcVessel.vesselName;
             vesselInfo.vesselType = srcVessel.vesselType;
             vesselInfo.rootPartUId = srcVessel.rootPart.flightID;
@@ -307,8 +461,19 @@ namespace ReCoupler
             GameEvents.onActiveJointNeedUpdate.Fire(srcVessel);
             GameEvents.onActiveJointNeedUpdate.Fire(trgVessel);
             sourceNode.attachedPart = trgPart;
-            targetNode.attachedPart = srcPart;
-            srcPart.attachMode = AttachModes.STACK;  // All KAS links are expected to be STACK.
+            sourceNode.attachedPartId = trgPart.flightID;
+            if (sourceNode.id != "srfAttach")
+            {
+                srcPart.attachMode = AttachModes.STACK;
+                if (targetNode != null)
+                    targetNode.attachedPart = srcPart;
+                else
+                    log.warning("Target node is null.");
+            }
+            else
+            {
+                srcPart.attachMode = AttachModes.SRF_ATTACH;
+            }
             srcPart.Couple(trgPart);
             // Depending on how active vessel has updated do either force active or make active. Note, that
             // active vessel can be EVA kerbal, in which case nothing needs to be adjusted.    
@@ -316,12 +481,10 @@ namespace ReCoupler
             if (srcVessel == FlightGlobals.ActiveVessel)
             {
                 FlightGlobals.ForceSetActiveVessel(sourceNode.owner.vessel);  // Use actual vessel.
-                //FlightInputHandler.SetNeutralControls();
             }
             else if (sourceNode.owner.vessel == FlightGlobals.ActiveVessel)
             {
                 sourceNode.owner.vessel.MakeActive();
-                //FlightInputHandler.SetNeutralControls();
             }
             GameEvents.onVesselWasModified.Fire(sourceNode.owner.vessel);
 
@@ -330,8 +493,6 @@ namespace ReCoupler
                 CoupleDockingPortWithPart(sourcePort);
             if (hasDockingPort(targetNode, out targetPort))
                 CoupleDockingPortWithPart(targetPort);
-
-            //return vesselInfo;
         }
 
         // Adapted from KIS by IgorZ

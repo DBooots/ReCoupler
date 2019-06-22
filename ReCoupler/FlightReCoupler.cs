@@ -2,8 +2,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEngine;
+using System.Collections.ObjectModel;   // Does not work in .NET 3.5 for ObservableCollection.
+//Using my own implementation instead.
+using ObservableCollection;
 
 namespace ReCoupler
 {
@@ -14,15 +16,15 @@ namespace ReCoupler
 
         internal static Logger log = new Logger("ReCoupler: FlightReCoupler: ");
 
-        public Dictionary<Vessel, List<FlightJointTracker>> trackedJoints = new Dictionary<Vessel, List<FlightJointTracker>>();
+        public Dictionary<Vessel, ObservableCollection<FlightJointTracker>> trackedJoints = new Dictionary<Vessel, ObservableCollection<FlightJointTracker>>();
         public List<FlightJointTracker> allJoints
         {
             get
             {
-                if (_dictChanged)//!(trackedJoints.GetHashCode() == _dictionaryHash))
+                if (_dictChanged)
                 {
                     _allJoints.Clear();
-                    foreach (List<FlightJointTracker> joints in trackedJoints.Values)
+                    foreach (IList<FlightJointTracker> joints in trackedJoints.Values)
                     {
                         _allJoints.AddRange(joints);
                     }
@@ -64,8 +66,7 @@ namespace ReCoupler
         {
             if (!trackedJoints.ContainsKey(vessel))
                 return;
-            clearJoints(vessel);
-            trackedJoints.Remove(vessel);
+            clearJoints(vessel);    // Also removes it from the dictionary.
         }
 
         private void onPartDie(Part part)
@@ -101,7 +102,7 @@ namespace ReCoupler
         IEnumerator DelayedUpdate(int time)
         {
             yield return new WaitForFixedUpdate();
-            log.debug("Running DelayedUpdate");
+            log.debug("Running DelayedUpdate: " + Planetarium.GetUniversalTime());
             List<Vessel> vessels = trackedJoints.Keys.ToList();
             for (int i = vessels.Count - 1; i >= 0; i--)
             {
@@ -153,12 +154,14 @@ namespace ReCoupler
                         if (jt.Couple(ownerVessel: vessels[i]))
                         {
                             log.debug("Removing joint since it is now a real, coupled joint.");
+                            log.debug("Parent0: " + jt.parts[0].parent.name + " Parent1: " + jt.parts[1].parent.name);
                             trackedJoints[vessels[i]].Remove(jt);
                         }
                         else
                             log.error("Could not couple parts!");
 
                         combinedAny = true;
+                        continue;
                     }
                     else if (jt.parts[0].vessel != vessels[i] && jt.parts[1].vessel != vessels[i])
                     {
@@ -167,7 +170,7 @@ namespace ReCoupler
                         {
                             log.debug("Adding them to vessel " + jt.parts[0].vessel.vesselName + " instead.");
                             if (!trackedJoints.ContainsKey(jt.parts[0].vessel))
-                                trackedJoints.Add(jt.parts[0].vessel, new List<FlightJointTracker>());
+                                addNewVesselToDict(jt.parts[0].vessel);
                             trackedJoints[jt.parts[0].vessel].Add(jt);
                             jt.combineCrossfeedSets();
                         }
@@ -198,7 +201,7 @@ namespace ReCoupler
             Part brokenPart = data.origin;
             if (!trackedJoints.ContainsKey(brokenPart.vessel))
                 return;
-            List<FlightJointTracker> joints = trackedJoints[brokenPart.vessel];
+            IList<FlightJointTracker> joints = trackedJoints[brokenPart.vessel];
             for (int i = joints.Count - 1; i >= 0; i--)
             {
                 if (joints[i].parts.Contains(brokenPart))
@@ -232,21 +235,42 @@ namespace ReCoupler
             if (!vessel.loaded || vessel.packed)
                 return;
             if (!trackedJoints.ContainsKey(vessel))
-                trackedJoints.Add(vessel, new List<FlightJointTracker>());
-            List<FlightJointTracker> joints = trackedJoints[vessel];
+                addNewVesselToDict(vessel);
+            IList<FlightJointTracker> joints = trackedJoints[vessel];
 
             for (int j = joints.Count - 1; j >= 0; j--)
             {
-                for (int d = joints[j].decouplers.Count - 1; d >=0; d--)
+                if (joints[j].decouplers.Any(d => d.isDecoupled))
                 {
-                    if(joints[j].decouplers[d].isDecoupled)
-                    {
-                        log.debug("Decoupler " + joints[j].decouplers[d].part.name + " decoupled. Removing from joints list.");
-                        joints[j].Destroy();
-                        joints.RemoveAt(j);
-                    }
+                    log.debug("Decoupler " + joints[j].decouplers.First(d => d.isDecoupled).part.name + " decoupled. Removing from joints list.");
+                    joints[j].Destroy();
+                    this.StartCoroutine(DelayedDecouplerCheck(joints[j], vessel));
+                    joints.RemoveAt(j);
+                    continue;
                 }
             }
+        }
+
+        IEnumerator DelayedDecouplerCheck(FlightJointTracker joint, Vessel owner)
+        {
+            FixedJoint[] tempJoints = new FixedJoint[2];
+            if (joint.ParentStillValid(0))
+            {
+                tempJoints[0] = joint.parts[0].gameObject.AddComponent<FixedJoint>();
+                tempJoints[0].connectedBody = joint.parents[0].part.Rigidbody;
+            }
+            if (joint.ParentStillValid(1))
+            {
+                tempJoints[1] = joint.parts[1].gameObject.AddComponent<FixedJoint>();
+                tempJoints[1].connectedBody = joint.parents[1].part.Rigidbody;
+            }
+            yield return new WaitForFixedUpdate();
+            if (tempJoints[0] != null)
+                DestroyImmediate(tempJoints[0]);
+            if (tempJoints[1] != null)
+                DestroyImmediate(tempJoints[1]);
+            log.debug("Running DelayedDecouplerCheck on " + owner.vesselName);
+            joint.PostDecouplerCheck();
         }
 
         public void checkActiveVessels()
@@ -294,7 +318,7 @@ namespace ReCoupler
         {
             log.debug("generateJoints: " + vessel.vesselName);
             if (!trackedJoints.ContainsKey(vessel))
-                trackedJoints.Add(vessel, new List<FlightJointTracker>());
+                addNewVesselToDict(vessel);
             List<Part> vesselParts = vessel.parts;
 
             List<Part> childen;
@@ -354,13 +378,14 @@ namespace ReCoupler
             for (int i = trackedJoints[vessel].Count - 1; i >= 0; i--)
                 trackedJoints[vessel][i].Destroy();
             trackedJoints.Remove(vessel);
+            _dictChanged = true;
         }
 
         public void regenerateJoints(Vessel vessel)
         {
             if (trackedJoints.ContainsKey(vessel))
                 clearJoints(vessel);
-            trackedJoints.Add(vessel, new List<FlightJointTracker>());
+            addNewVesselToDict(vessel);
             foreach (FlightJointTracker joint in ReCouplerUtils.Generate_Flight(vessel))
             {
                 trackedJoints[vessel].Add(joint);
@@ -376,10 +401,38 @@ namespace ReCoupler
             }
         }
 
+        public void addNewVesselToDict(Vessel vessel)
+        {
+            if (!trackedJoints.ContainsKey(vessel))
+            {
+                trackedJoints.Add(vessel, new ObservableCollection<FlightJointTracker>());
+                _dictChanged = true;
+                trackedJoints[vessel].CollectionChanged += FlightReCoupler_CollectionChanged;
+            }
+        }
+
+        private void FlightReCoupler_CollectionChanged(object sender, EventArgs e)
+        {
+            _dictChanged = true;
+        }
+
         public class FlightJointTracker : AbstractJointTracker
         {
+            public struct Parent
+            {
+                public Part part;
+                public AttachNode node;
+                public AttachNode nodeTo;
+                public Parent(Part part, AttachNode node, AttachNode nodeTo)
+                {
+                    this.part = part;
+                    this.node = node;
+                    this.nodeTo = nodeTo;
+                }
+            }
+            public List<Parent> parents = new List<Parent>();
             public ConfigurableJoint joint = null;
-            public List<PartSet> oldCrossfeedSets = new List<PartSet>();
+            public List<PartSet> oldCrossfeedSets = new List<PartSet>(2);
             public bool linkCreated
             {
                 get { return joint != null || _isTrackingDockingPorts; }
@@ -416,6 +469,7 @@ namespace ReCoupler
                 this.joint = joint;
                 log = new Logger("ReCoupler: FlightJointTracker: " + parts[0].name + " and " + parts[1].name);
                 this._isTrackingDockingPorts = isTrackingDockingPorts;
+                this.CheckParents();
                 if (link)
                     this.CreateLink();
                 if (!isTrackingDockingPorts)
@@ -426,6 +480,7 @@ namespace ReCoupler
             {
                 log = new Logger("ReCoupler: FlightJointTracker: " + parts[0].name + " and " + parts[1].name + " ");
                 this._isTrackingDockingPorts = isTrackingDockingPorts;
+                this.CheckParents();
                 if (link)
                     this.CreateLink();
                 if (!isTrackingDockingPorts)
@@ -436,6 +491,7 @@ namespace ReCoupler
             {
                 log = new Logger("ReCoupler: FlightJointTracker: " + parts[0].name + " and " + parts[1].name + " ");
                 this._isTrackingDockingPorts = isTrackingDockingPorts;
+                this.CheckParents();
                 if (link)
                     this.CreateLink();
                 if (!isTrackingDockingPorts)
@@ -668,6 +724,57 @@ namespace ReCoupler
                     GameEvents.onVesselWasModified.Fire(parts[0].vessel);
                 else if (parts[1] != null && parts[1].vessel != null)
                     GameEvents.onVesselWasModified.Fire(parts[1].vessel);
+            }
+
+            private void CheckParents()
+            {
+                parents.Capacity = parts.Count;
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    if (parts[i].parent != null)
+                    {
+                        parents.Add(new Parent(parts[i].parent, parts[i].parent.FindAttachNodeByPart(parts[i]), parts[i].FindAttachNodeByPart(parts[i].parent)));
+                    }
+                }
+            }
+
+            public void PostDecouplerCheck()
+            {
+                for(int i = parts.Count - 1; i >= 0; i--)
+                {
+                    try
+                    {
+                        if (parts[i].vessel != parents[i].part.vessel && ParentStillValid(parents[i]))
+                        {
+                            log.debug("Coupling part to parent.");
+                            ReCouplerUtils.CoupleParts(parts[i], parents[i].part, parents[i].nodeTo, parents[i].node);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        log.error("Error in PostDecouplerCheck: " + ex);
+                    }
+                }
+            }
+
+            public bool ParentStillValid(int i) { return ParentStillValid(parents[i]); }
+
+            public static bool ParentStillValid(Parent parent)
+            {
+                if (parent.node == null)
+                    return true;
+
+                if (parent.part.FindModulesImplementing<ModuleDecouple>().Any(
+                    decoupler => decoupler.isDecoupled && (decoupler.ExplosiveNode == parent.node || decoupler.isOmniDecoupler)))
+                    return false;
+                if (parent.nodeTo.owner.FindModulesImplementing<ModuleDecouple>().Any(
+                    decoupler => decoupler.isDecoupled && (decoupler.ExplosiveNode == parent.nodeTo || decoupler.isOmniDecoupler)))
+                    return false;
+                    
+                // TODO:
+                //if (parent.part.FindModulesImplementing<ModuleDockingNode>().Any(dockingNode => dockingNode.referenceNode == parent.node))
+                //    return false;
+                return true;
             }
         }
     }

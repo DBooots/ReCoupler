@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEngine;
 using KSP.UI.Screens;
 
@@ -33,6 +32,7 @@ namespace ReCoupler
         private bool _highlightOn = false;
         private bool _highlightWasOn = false;
         private bool selectActive = false;
+        private bool inputLocked = false;
         private const string iconPath = "ReCoupler/ReCoupler_Icon";
         private const string iconPath_off = "ReCoupler/ReCoupler_Icon_off";
         private const string iconPath_blizzy = "ReCoupler/ReCoupler_blizzy_Icon";
@@ -63,6 +63,7 @@ namespace ReCoupler
                 GameEvents.onGUIApplicationLauncherReady.Add(OnGuiApplicationLauncherReady);
             }
             guiId = GUIUtility.GetControlID(FocusType.Passive);
+            InputLockManager.RemoveControlLock("ReCoupler_EditorLock");
         }
 
         private void OnGuiApplicationLauncherReady()
@@ -124,6 +125,7 @@ namespace ReCoupler
             _highlightOn = false;
             selectActive = false;
             GUIVisible = false;
+            UnlockEditor();
             if (button != null)
                 button.SetTexture(GameDatabase.Instance.GetTexture(iconPath, false));
             if (blizzyToolbarButton != null)
@@ -159,6 +161,7 @@ namespace ReCoupler
                 ApplicationLauncher.Instance.RemoveModApplication(button);
             if (blizzyToolbarButton != null)
                 blizzyToolbarButton.Destroy();
+            UnlockEditor();
         }
 
         public void OnGUI()
@@ -189,14 +192,16 @@ namespace ReCoupler
 
             GUILayout.BeginVertical(HighLogic.Skin.scrollView);
             _highlightOn = GUILayout.Toggle(_highlightOn, "Show ReCoupled Parts", standardButton);
-            if (selectActive = GUILayout.Toggle(selectActive, "Remove a link", HighLogic.LoadedSceneIsFlight ? standardButton : disabledButton))
+            if (selectActive = GUILayout.Toggle(selectActive, "Remove a link", standardButton))
             {
-                if (!HighLogic.LoadedSceneIsFlight)
-                    selectActive = false;
-                else
-                    _highlightOn = true;
+                _highlightOn = true;
+                LockEditor();
             }
-            if (GUILayout.Button("Reset links", HighLogic.LoadedSceneIsFlight ? standardButton : disabledButton))
+            else
+            {
+                UnlockEditor();
+            }
+            if (GUILayout.Button("Reset links", standardButton))
             {
                 partPairsToIgnore.Clear();
                 if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
@@ -205,7 +210,7 @@ namespace ReCoupler
                 }
                 else if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
                 {
-                    EditorReCoupler.Instance.reConstruct();
+                    EditorReCoupler.Instance.ResetAndRebuild();
                 }
             }
             GUILayout.Space(10);
@@ -227,7 +232,7 @@ namespace ReCoupler
                 if (float.TryParse(connectAngle_string, out connectAngle_set))
                     ReCouplerSettings.connectAngle = connectAngle_set;
                 if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
-                    EditorReCoupler.Instance.reConstruct();
+                    EditorReCoupler.Instance.ResetAndRebuild();
                 else if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
                     FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
             }
@@ -277,11 +282,11 @@ namespace ReCoupler
             if (_highlightOn || _highlightWasOn || selectActive)
             {
                 if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
-                    jointsInvolved = EditorReCoupler.Instance.hiddenNodes.ConvertAll(x => (AbstractJointTracker)x);
+                    jointsInvolved = EditorReCoupler.Instance.hiddenNodes.CastList<AbstractJointTracker,EditorReCoupler.EditorJointTracker>();
                 else if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && FlightReCoupler.Instance != null)
                 {
                     if (FlightReCoupler.Instance.trackedJoints.ContainsKey(FlightGlobals.ActiveVessel))
-                        jointsInvolved = FlightReCoupler.Instance.trackedJoints[FlightGlobals.ActiveVessel].ConvertAll(x => (AbstractJointTracker)x);
+                        jointsInvolved = FlightReCoupler.Instance.trackedJoints[FlightGlobals.ActiveVessel].CastList<AbstractJointTracker,FlightReCoupler.FlightJointTracker>();
                     else
                     {
                         jointsInvolved = null;
@@ -316,7 +321,9 @@ namespace ReCoupler
             }
             if (selectActive)
             {
-                if (Input.GetKeyUp(KeyCode.Mouse0))
+                LockEditor();
+                ScreenMessages.PostScreenMessage("Select a part in the ReCoupler joint for removal with ctrl + left mouseclick", Time.deltaTime, ScreenMessageStyle.UPPER_CENTER);
+                if (Input.GetKeyUp(KeyCode.Mouse0) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
                 {
                     Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
                     RaycastHit hit;
@@ -333,7 +340,7 @@ namespace ReCoupler
                         {
                             log.debug("Raycast hit part " + hitPart.name);
                             List<AbstractJointTracker> hitJoints = jointsInvolved.FindAll(j => j.parts.Contains(hitPart));
-                            for (int i = hitJoints.Count - 1; i>=0; i--)
+                            for (int i = hitJoints.Count - 1; i >= 0; i--)
                             {
                                 log.debug("Destroying link between " + hitJoints[i].parts[0].name + " and " + hitJoints[i].parts[1].name);
                                 hitJoints[i].Destroy();
@@ -349,6 +356,8 @@ namespace ReCoupler
                                 hitJoints[i].parts[0].SetHighlightDefault();
                                 hitJoints[i].parts[1].SetHighlightDefault();
                             }
+
+                            UnlockEditor();
                             selectActive = false;
                         }
                         else
@@ -356,6 +365,28 @@ namespace ReCoupler
                     }
                 }
             }
+        }
+
+        private void LockEditor()
+        {
+            if (inputLocked)
+                return;
+            if (!HighLogic.LoadedSceneIsEditor)
+                return;
+            inputLocked = true;
+            //EditorLogic.fetch.Lock(false, false, false, "ReCoupler_EditorLock");
+            InputLockManager.SetControlLock(ControlTypes.EDITOR_SOFT_LOCK, "ReCoupler_EditorLock");
+            log.debug("Locking editor");
+        }
+
+        private void UnlockEditor()
+        {
+            if (!inputLocked)
+                return;
+            //EditorLogic.fetch.Unlock("ReCoupler_EditorLock");
+            InputLockManager.RemoveControlLock("ReCoupler_EditorLock");
+            inputLocked = false;
+            log.debug("Unlocking editor");
         }
 
         public Part SelectPartUnderMouse()
