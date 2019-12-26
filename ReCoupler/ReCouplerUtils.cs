@@ -108,7 +108,7 @@ namespace ReCoupler
                 if (doNotJoin)
                     continue;
 
-                AttachNode closestNode = getEligiblePairing(partNodes[i], openNodes, ReCouplerSettings.connectRadius, ReCouplerSettings.connectAngle);
+                AttachNode closestNode = getEligiblePairing(partNodes[i], openNodes, ReCouplerSettings.connectRadius, ReCouplerSettings.connectAngle, ReCouplerSettings.allowRoboJoints, ReCouplerSettings.allowKASJoints);
                 if (closestNode != null)
                 {
                     if (jointType == JointType.EditorJointTracker)
@@ -255,7 +255,7 @@ namespace ReCoupler
             return openNodes;
         }
 
-        public static AttachNode getEligiblePairing(AttachNode node, List<AttachNode> checkNodes, float radius = ReCouplerSettings.connectRadius_default, float angle = ReCouplerSettings.connectAngle_default)
+        public static AttachNode getEligiblePairing(AttachNode node, List<AttachNode> checkNodes, float radius = ReCouplerSettings.connectRadius_default, float angle = ReCouplerSettings.connectAngle_default, bool allowRoboJoints = ReCouplerSettings.allowRoboJoints_default, bool allowKASJoints = ReCouplerSettings.allowKASJoints_default)
         {
             float closestDist = radius;
             AttachNode closestNode = null;
@@ -295,7 +295,7 @@ namespace ReCoupler
                 if (dist <= closestDist && Math.Abs(angleBtwn - 180) <= angle)
                 // but at least closer than the min radius because of the initialization of closestDist
                 {
-                    if (TreeHasKinks(checkNodes[j].owner, node.owner))
+                    if (TreeHasKinks(checkNodes[j].owner, node.owner, allowRoboJoints, allowKASJoints))
                         continue;
 
                     log.debug(node.owner.name + "/" + checkNodes[j].owner.name + ": " + dist + "m, at " + angleBtwn + " deg.");
@@ -306,7 +306,7 @@ namespace ReCoupler
             return closestNode;
         }
 
-        public static bool TreeHasKinks(Part part1, Part part2)
+        public static bool TreeHasKinks(Part part1, Part part2, bool allowRoboJoints, bool allowKASJoints)
         {
             try
             {
@@ -338,7 +338,7 @@ namespace ReCoupler
 
                 for (int i = partsToCheck.Count - 1; i >= 0; i--)
                 {
-                    if (PartIsInvalidForPath(partsToCheck[i]))
+                    if (PartIsInvalidForPath(partsToCheck[i], allowRoboJoints, allowKASJoints))
                     {
                         log.debug("Part: " + partsToCheck[i].name + " had an ineligible module.");
                         return true;
@@ -421,18 +421,18 @@ namespace ReCoupler
             return lvl;
         }
 
-        public static bool PartIsInvalidForPath(Part part)
+        public static bool PartIsInvalidForPath(Part part, bool allowRoboJoints, bool allowKASJoints)
         {
             // Accounts for some Infernal Robotics Servos. (The mod is being revitalized currently and modern versions will likely comply with IJointLockState, handled below.
-            if (part.Modules.Contains("ModuleIRServo") || part.Modules.Contains("ServoMotor") || part.Modules.Contains("Servo"))
+            if (!allowRoboJoints && (part.Modules.Contains("ModuleIRServo") || part.Modules.Contains("ServoMotor") || part.Modules.Contains("Servo")))
                 return true;
-            if (part.Modules.Contains("MuMechToggle"))
+            if (!allowRoboJoints && (part.Modules.Contains("MuMechToggle")))
                 return true;
             // Accounts for all current joints in Kerbal Attachment System.
-            if (part.Modules.Contains("AbstractJoint") || part.Modules.Contains("KASJointCableBase") || part.Modules.Contains("KASJointTwoEndsSphere") || part.Modules.Contains("KASJointTowBar") || part.Modules.Contains("KASJointRigid"))
+            if (!allowKASJoints && (part.Modules.Contains("AbstractJoint") || part.Modules.Contains("KASJointCableBase") || part.Modules.Contains("KASJointTwoEndsSphere") || part.Modules.Contains("KASJointTowBar") || part.Modules.Contains("KASJointRigid")))
                 return true;
             // Accounts for ModuleGrappleNode and all of the Breaking Ground joints and servos.
-            if (part.FindModuleImplementing<IJointLockState>() != null)
+            if (!allowRoboJoints && (part.FindModuleImplementing<IJointLockState>() != null))
                 return true;
             return false;
         }
