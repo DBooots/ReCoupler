@@ -429,12 +429,17 @@ namespace ReCoupler
             if (!allowRoboJoints && (part.Modules.Contains("MuMechToggle")))
                 return true;
             // Accounts for all current joints in Kerbal Attachment System.
-            if (!allowKASJoints && (part.Modules.Contains("AbstractJoint") || part.Modules.Contains("KASJointCableBase") || part.Modules.Contains("KASJointTwoEndsSphere") || part.Modules.Contains("KASJointTowBar") || part.Modules.Contains("KASJointRigid")))
+            if (!allowKASJoints && isKASPart(part))
                 return true;
             // Accounts for ModuleGrappleNode and all of the Breaking Ground joints and servos.
-            if (!allowRoboJoints && (part.FindModuleImplementing<IJointLockState>() != null))
+            if (!allowRoboJoints && !isKASPart(part) && (part.FindModuleImplementing<IJointLockState>() != null))
                 return true;
             return false;
+        }
+
+        private static bool isKASPart(Part part)
+        {
+            return (part.Modules.Contains("AbstractJoint") || part.Modules.Contains("KASJointCableBase") || part.Modules.Contains("KASJointTwoEndsSphere") || part.Modules.Contains("KASJointTowBar") || part.Modules.Contains("KASJointRigid"));
         }
 
         // Adapted from KASv1 by IgorZ
