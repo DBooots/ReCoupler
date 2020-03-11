@@ -5,7 +5,6 @@ using System.Linq;
 using UnityEngine;
 using System.Collections.ObjectModel;   // Does not work in .NET 3.5 for ObservableCollection.
 //Using my own implementation instead.
-using ObservableCollection;
 
 namespace ReCoupler
 {
