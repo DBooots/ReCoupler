@@ -118,7 +118,7 @@ namespace ReCoupler
             connectAngle_string = ReCouplerSettings.connectAngle.ToString();
             allowRoboJoints_bool = ReCouplerSettings.allowRoboJoints;
             allowKASJoints_bool = ReCouplerSettings.allowKASJoints;
-        GUIVisible = true;
+            GUIVisible = true;
             if (button != null)
                 button.SetTexture(GameDatabase.Instance.GetTexture(iconPath_off, false));
             if (blizzyToolbarButton != null)
