@@ -41,14 +41,15 @@ namespace ReCoupler
         private string connectAngle_string = ReCouplerSettings.connectAngle_default.ToString();
         private bool allowRoboJoints_bool = ReCouplerSettings.allowRoboJoints_default;
         private bool allowKASJoints_bool = ReCouplerSettings.allowKASJoints_default;
-        protected Rect ReCouplerWindow;
-        private int guiId;
+        protected Vector2 ReCouplerWindow = new Vector2(-1, -1);
         internal protected List<AbstractJointTracker> jointsInvolved = null;
         public bool appLauncherEventSet = false;
         private List<Part> highlightedParts = new List<Part>();
 
         private static ApplicationLauncherButton button = null;
         internal static IButton blizzyToolbarButton = null;
+
+        private PopupDialog dialog = null;
 
         Logger log = new Logger("ReCouplerGui: ");
 
@@ -64,7 +65,6 @@ namespace ReCoupler
                 appLauncherEventSet = true;
                 GameEvents.onGUIApplicationLauncherReady.Add(OnGuiApplicationLauncherReady);
             }
-            guiId = GUIUtility.GetControlID(FocusType.Passive);
             InputLockManager.RemoveControlLock("ReCoupler_EditorLock");
         }
 
@@ -119,6 +119,15 @@ namespace ReCoupler
             allowRoboJoints_bool = ReCouplerSettings.allowRoboJoints;
             allowKASJoints_bool = ReCouplerSettings.allowKASJoints;
             GUIVisible = true;
+
+            if (ReCouplerWindow.x == -1 && ReCouplerWindow.y == -1)
+            {
+                ReCouplerWindow = new Vector2(0.75f, 0.5f);
+            }
+
+            dialog = SpawnPopupDialog();
+            dialog.RTrf.position = ReCouplerWindow;
+
             if (button != null)
                 button.SetTexture(GameDatabase.Instance.GetTexture(iconPath_off, false));
             if (blizzyToolbarButton != null)
@@ -129,6 +138,10 @@ namespace ReCoupler
             _highlightOn = false;
             selectActive = false;
             GUIVisible = false;
+            SaveWindowPosition();
+            dialog.Dismiss();
+            Destroy(dialog);
+            dialog = null;
             UnlockEditor();
             if (button != null)
                 button.SetTexture(GameDatabase.Instance.GetTexture(iconPath, false));
@@ -170,104 +183,71 @@ namespace ReCoupler
             UnlockEditor();
         }
 
-        public void OnGUI()
+        public PopupDialog SpawnPopupDialog()
         {
-            if (GUIVisible)
+            List<DialogGUIBase> dialogToDisplay = new List<DialogGUIBase>
             {
-                if (ReCouplerWindow.x == 0 && ReCouplerWindow.y == 0)
+                new DialogGUIToggleButton(()=>_highlightOn, "Show Recoupled Parts", (value) => _highlightOn = value, -1, 30) { OptionInteractableCondition = () => !selectActive },
+                new DialogGUIToggleButton(() => selectActive, "Remove a link", (value) => { selectActive = value; if (selectActive) { _highlightOn = true; LockEditor(); } UnlockEditor(); }, -1, 30),
+                new DialogGUIButton("Reset Links", () =>
                 {
-                    ReCouplerWindow = new Rect(Screen.width * 2 / 3, Screen.height / 2, 300, 200);
-                }
-                ReCouplerWindow = GUILayout.Window(guiId, ReCouplerWindow, ReCouplerInterface, "ReCoupler", HighLogic.Skin.window, GUILayout.MinWidth(300), GUILayout.MinHeight(200));
-            }
+                   partPairsToIgnore.Clear();
+                    if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
+                    {
+                        FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
+                    }
+                    else if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
+                    {
+                        EditorReCoupler.Instance.ResetAndRebuild();
+                    }
+                }, false),
+                new DialogGUISpace(10),
+                new DialogGUILabel("Settings:", UISkinManager.defaultSkin.window),
+                new DialogGUIHorizontalLayout(TextAnchor.MiddleLeft,
+                    new DialogGUILabel("Acceptable joint radius:", UISkinManager.defaultSkin.toggle, true),
+                    new DialogGUITextInput(connectRadius_string, false, 5, (s) => connectRadius_string = s, 60, 25),
+                    new DialogGUILabel("", 35)
+                    ),
+                new DialogGUIHorizontalLayout(TextAnchor.MiddleLeft,
+                    new DialogGUILabel("Acceptable joint angle:", UISkinManager.defaultSkin.toggle, true),
+                    new DialogGUITextInput(connectAngle_string, false, 5, (s) => connectAngle_string = s, 60, 25),
+                    new DialogGUILabel("", 35)
+                    ),
+                new DialogGUIToggle(allowRoboJoints_bool, "Allow Breaking Ground joints between ReCoupler joints", (value) => allowRoboJoints_bool = value),
+                new DialogGUIToggle(allowKASJoints_bool, "Allow KAS joints between ReCoupler joints", (value) => allowKASJoints_bool = value),
+                new DialogGUIButton("Apply", () =>
+                {
+                    if (float.TryParse(connectRadius_string, out float connectRadius_set))
+                        ReCouplerSettings.connectRadius = connectRadius_set;
+                    if (float.TryParse(connectAngle_string, out float connectAngle_set))
+                        ReCouplerSettings.connectAngle = connectAngle_set;
+                    ReCouplerSettings.allowRoboJoints = allowRoboJoints_bool;
+                    ReCouplerSettings.allowKASJoints = allowKASJoints_bool;
+                    if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
+                        EditorReCoupler.Instance.ResetAndRebuild();
+                    else if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
+                        FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
+                }, false),
+                new DialogGUIButton("Close", () =>
+                {
+                    if (button != null)
+                        button.SetFalse(true);
+                    else
+                        onFalse();
+                })
+            };
+
+            PopupDialog dialog = PopupDialog.SpawnPopupDialog(new Vector2(0, 1), new Vector2(0, 1),
+                new MultiOptionDialog("ReCoupler", "", "ReCoupler", UISkinManager.defaultSkin, new Rect(ReCouplerWindow.x, ReCouplerWindow.y, 250, 150),
+                    dialogToDisplay.ToArray()),
+                false, UISkinManager.defaultSkin, false);
+            dialog.OnDismiss += SaveWindowPosition;
+            return dialog;
         }
 
-        public void ReCouplerInterface(int GuiId)
+        private void SaveWindowPosition()
         {
-            GUIStyle standardButton = new GUIStyle(HighLogic.Skin.button);
-            standardButton.padding = new RectOffset(8, 8, 8, 8);
-            standardButton.normal.textColor = standardButton.focused.textColor = Color.white;
-            standardButton.hover.textColor = standardButton.active.textColor = Color.white;
-
-            GUIStyle disabledButton = new GUIStyle(HighLogic.Skin.button);
-            disabledButton.padding = new RectOffset(8, 8, 8, 8);
-            disabledButton.normal.textColor = disabledButton.focused.textColor = Color.gray;
-            disabledButton.hover.textColor = disabledButton.active.textColor = Color.gray;
-
-            GUIStyle textField = new GUIStyle(HighLogic.Skin.textField);
-
-            GUILayout.BeginVertical(HighLogic.Skin.scrollView);
-            _highlightOn = GUILayout.Toggle(_highlightOn, "Show ReCoupled Parts", standardButton);
-            if (selectActive = GUILayout.Toggle(selectActive, "Remove a link", standardButton))
-            {
-                _highlightOn = true;
-                LockEditor();
-            }
-            else
-            {
-                UnlockEditor();
-            }
-            if (GUILayout.Button("Reset links", standardButton))
-            {
-                partPairsToIgnore.Clear();
-                if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
-                {
-                    FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
-                }
-                else if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
-                {
-                    EditorReCoupler.Instance.ResetAndRebuild();
-                }
-            }
-            GUILayout.Space(10);
-            GUILayout.Label("Settings:");
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Radius:", GUILayout.MinWidth(100));
-            connectRadius_string = GUILayout.TextField(connectRadius_string, textField);
-            GUILayout.EndHorizontal();
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Angle:", GUILayout.MinWidth(100));
-            connectAngle_string = GUILayout.TextField(connectAngle_string, textField);
-            GUILayout.EndHorizontal();
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Allow Robotic Nodes:", GUILayout.MinWidth(100));
-            allowRoboJoints_bool = GUILayout.Toggle(allowRoboJoints_bool, allowRoboJoints_bool.ToString());
-            GUILayout.EndHorizontal();
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Allow Cable Nodes:", GUILayout.MinWidth(100));
-            allowKASJoints_bool = GUILayout.Toggle(allowKASJoints_bool, allowKASJoints_bool.ToString());
-            GUILayout.EndHorizontal();
-
-            if (GUILayout.Button("Apply", standardButton))
-            {
-                float connectRadius_set, connectAngle_set;
-                bool allowRoboJoints_set, allowKASJoints_set;
-                if (float.TryParse(connectRadius_string, out connectRadius_set))
-                    ReCouplerSettings.connectRadius = connectRadius_set;
-                if (float.TryParse(connectAngle_string, out connectAngle_set))
-                    ReCouplerSettings.connectAngle = connectAngle_set;
-                if (bool.TryParse(allowRoboJoints_bool.ToString(), out allowRoboJoints_set))
-                    ReCouplerSettings.allowRoboJoints = allowRoboJoints_set;
-                if (bool.TryParse(allowKASJoints_bool.ToString(), out allowKASJoints_set))
-                    ReCouplerSettings.allowKASJoints = allowKASJoints_set;
-                if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
-                    EditorReCoupler.Instance.ResetAndRebuild();
-                else if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
-                    FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
-            }
-            GUILayout.EndVertical();
-            
-            GUIStyle exitButton = new GUIStyle(HighLogic.Skin.button);
-            exitButton.normal.textColor = exitButton.focused.textColor = Color.red;
-            exitButton.hover.textColor = exitButton.active.textColor = Color.red;
-            if (GUI.Button(new Rect(ReCouplerWindow.width - 18, 2, 16, 16), "X", exitButton))
-            {
-                if (button != null)
-                    button.SetFalse(true);
-                else
-                    onFalse();
-            }
-            GUI.DragWindow();  //new Rect(0, 0, 10000, 20)
+            ReCouplerWindow = new Vector2(dialog.RTrf.position.x / Screen.width + 0.5f, dialog.RTrf.position.y / Screen.height + 0.5f);
         }
 
         public void highlightPart(Part part, int colorIndx = 0)
