@@ -44,12 +44,12 @@
                         else
                             connectAngle = loadedAngle;
 
-                        if (!float.TryParse(cfgs[i].config.GetValue("allowRoboJoints"), out loadedAngle))
+                        if (!bool.TryParse(cfgs[i].config.GetValue("allowRoboJoints"), out loadedAllowRoboJoints))
                             loadedAllowRoboJoints = allowRoboJoints;
                         else
                             allowRoboJoints = loadedAllowRoboJoints;
 
-                        if (!float.TryParse(cfgs[i].config.GetValue("allowKASJoints"), out loadedAngle))
+                        if (!bool.TryParse(cfgs[i].config.GetValue("allowKASJoints"), out loadedAllowKASJoints))
                             loadedAllowKASJoints = allowKASJoints;
                         else
                             allowKASJoints = loadedAllowKASJoints;
