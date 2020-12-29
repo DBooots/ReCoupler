@@ -69,7 +69,7 @@ namespace ReCoupler
             }
         }
 
-        public static bool getCLSAddonInstance()
+        public static bool GetCLSAddonInstance()
         {
             if (IsCLSInstalled)
                 CLSAddonInstance = InstanceProperty.GetValue(null, null);
@@ -78,28 +78,28 @@ namespace ReCoupler
 
         public static void RequestAddConnection(Part part1, Part part2)
         {
-            if (IsCLSInstalled && getCLSAddonInstance())
+            if (IsCLSInstalled && GetCLSAddonInstance())
             {
                 requestAddConnectionMethod.Invoke(CLSAddonInstance, new object[] { part1, part2 });
             }
         }
         public static void RequestAddConnections(List<Part> part1, List<Part> part2)
         {
-            if (IsCLSInstalled && getCLSAddonInstance())
+            if (IsCLSInstalled && GetCLSAddonInstance())
             {
                 requestAddConnectionsMethod.Invoke(CLSAddonInstance, new object[] { part1, part2 });
             }
         }
         public static void RequestRemoveConnection(Part part1, Part part2)
         {
-            if (IsCLSInstalled && getCLSAddonInstance())
+            if (IsCLSInstalled && GetCLSAddonInstance())
             {
                 requestRemoveConnectionMethod.Invoke(CLSAddonInstance, new object[] { part1, part2 });
             }
         }
         public static void RequestRemoveConnections(List<Part> part1, List<Part> part2)
         {
-            if (IsCLSInstalled && getCLSAddonInstance())
+            if (IsCLSInstalled && GetCLSAddonInstance())
             {
                 requestRemoveConnectionsMethod.Invoke(CLSAddonInstance, new object[] { part1, part2 });
             }

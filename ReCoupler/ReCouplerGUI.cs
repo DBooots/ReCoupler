@@ -14,7 +14,7 @@ namespace ReCoupler
         public List<Part[]> partPairsToIgnore = new List<Part[]>();
         public List<Color> colorSpectrum = new List<Color> { Color.red, Color.yellow, Color.cyan, Color.blue, Color.magenta, Color.white };
         public bool GUIVisible = false;
-        public bool highlightOn
+        public bool HighlightOn
         {
             get
             {
@@ -71,8 +71,8 @@ namespace ReCoupler
         private void OnGuiApplicationLauncherReady()
         {
             button = ApplicationLauncher.Instance.AddModApplication(
-                onTrue,
-                onFalse,
+                OnTrue,
+                OnFalse,
                 null,
                 null,
                 null,
@@ -93,7 +93,7 @@ namespace ReCoupler
                 blizzyToolbarButton.Visible = true;
                 blizzyToolbarButton.OnClick += (e) =>
                 {
-                    onButtonToggle();
+                    OnButtonToggle();
                 };
                 return true;
             }
@@ -104,15 +104,15 @@ namespace ReCoupler
             }
         }
 
-        public void onButtonToggle()
+        public void OnButtonToggle()
         {
             if (!GUIVisible)
-                onTrue();
+                OnTrue();
             else
-                onFalse();
+                OnFalse();
         }
 
-        public void onTrue()
+        public void OnTrue()
         {
             connectRadius_string = ReCouplerSettings.connectRadius.ToString();
             connectAngle_string = ReCouplerSettings.connectAngle.ToString();
@@ -133,7 +133,7 @@ namespace ReCoupler
             if (blizzyToolbarButton != null)
                 blizzyToolbarButton.TexturePath = iconPath_blizzy_off;
         }
-        public void onFalse()
+        public void OnFalse()
         {
             _highlightOn = false;
             selectActive = false;
@@ -158,7 +158,7 @@ namespace ReCoupler
             this.allowKASJoints_bool = ReCouplerSettings.allowKASJoints;
             if (!ReCouplerSettings.showGUI)
             {
-                highlightOn = false;
+                HighlightOn = false;
                 if (button != null)
                 {
                     button.SetFalse(true);
@@ -194,7 +194,7 @@ namespace ReCoupler
                    partPairsToIgnore.Clear();
                     if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
                     {
-                        FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
+                        FlightReCoupler.Instance.RegenerateJoints(FlightGlobals.ActiveVessel);
                     }
                     else if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
                     {
@@ -226,14 +226,14 @@ namespace ReCoupler
                     if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
                         EditorReCoupler.Instance.ResetAndRebuild();
                     else if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
-                        FlightReCoupler.Instance.regenerateJoints(FlightGlobals.ActiveVessel);
+                        FlightReCoupler.Instance.RegenerateJoints(FlightGlobals.ActiveVessel);
                 }, false),
                 new DialogGUIButton("Close", () =>
                 {
                     if (button != null)
                         button.SetFalse(true);
                     else
-                        onFalse();
+                        OnFalse();
                 })
             };
 
@@ -250,7 +250,7 @@ namespace ReCoupler
             ReCouplerWindow = new Vector2(dialog.RTrf.position.x / Screen.width + 0.5f, dialog.RTrf.position.y / Screen.height + 0.5f);
         }
 
-        public void highlightPart(Part part, int colorIndx = 0)
+        public void HighlightPart(Part part, int colorIndx = 0)
         {
             if (_highlightOn)
             {
@@ -267,7 +267,7 @@ namespace ReCoupler
             }
         }
 
-        public void resetHighlighting(List<Part> parts)
+        public void ResetHighlighting(List<Part> parts)
         {
             for (int i = parts.Count - 1; i >= 0; i--)
             {
@@ -301,11 +301,11 @@ namespace ReCoupler
             }
             if (jointsInvolved == null)
             {
-                resetHighlighting(highlightedParts);
+                ResetHighlighting(highlightedParts);
                 return;
             }
             if (highlightedParts.Count > 0)
-                resetHighlighting(highlightedParts.FindAll((Part part) => jointsInvolved.All(jt => !jt.parts.Contains(part))));
+                ResetHighlighting(highlightedParts.FindAll((Part part) => jointsInvolved.All(jt => !jt.parts.Contains(part))));
 
             if (_highlightOn || _highlightWasOn)
             {
@@ -313,7 +313,7 @@ namespace ReCoupler
                 {
                     for (int j = jointsInvolved[i].parts.Count - 1; j >= 0; j--)
                     {
-                        highlightPart(jointsInvolved[i].parts[j], i);
+                        HighlightPart(jointsInvolved[i].parts[j], i);
                     }
                 }
                 _highlightWasOn = _highlightOn;
@@ -321,13 +321,12 @@ namespace ReCoupler
             if (selectActive)
             {
                 LockEditor();
-                ScreenMessages.PostScreenMessage("Select a part in the ReCoupler joint for removal with ctrl + left mouseclick", Time.deltaTime, ScreenMessageStyle.UPPER_CENTER);
+                ScreenMessages.PostScreenMessage("Select a part in the ReCoupler joint for removal with ctrl + left mouseclick", 0.3f, ScreenMessageStyle.UPPER_CENTER);
                 if (Input.GetKeyUp(KeyCode.Mouse0) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
                 {
                     Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-                    RaycastHit hit;
 
-                    if (Physics.Raycast(ray, out hit))
+                    if (Physics.Raycast(ray, out RaycastHit hit))
                     {
                         Part hitPart = Part.FromGO(hit.transform.gameObject) ?? hit.transform.gameObject.GetComponentInParent<Part>();
                         if (hitPart == null)

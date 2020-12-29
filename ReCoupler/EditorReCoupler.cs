@@ -82,10 +82,10 @@ namespace ReCoupler
             ResetAndRebuild(forbidAdding: true);
         }
 
-        public void generateFromShipConstruct(ShipConstruct ship, bool forbidAdding = false)
+        public void GenerateFromShipConstruct(ShipConstruct ship, bool forbidAdding = false)
         {
             openNodes.Clear();
-            generateJoints(ship);
+            GenerateJoints(ship);
 
             foreach (EditorJointTracker joint in ReCouplerUtils.Generate_Editor(ship, openNodes))
             {
@@ -99,7 +99,7 @@ namespace ReCoupler
             }
         }
 
-        public void generateJoints(ShipConstruct vessel)
+        public void GenerateJoints(ShipConstruct vessel)
         {
             List<Part> vesselParts = vessel.parts;
 
@@ -115,13 +115,13 @@ namespace ReCoupler
                 {
                     if (activePart.attachNodes[n].attachedPart != null && !childen.Contains(activePart.attachNodes[n].attachedPart))
                     {
-                        parseAttachNodes(activePart.attachNodes[n], activePart.attachNodes[n].attachedPart.attachNodes.FindAll(AN => AN.attachedPart == activePart));
+                        ParseAttachNodes(activePart.attachNodes[n], activePart.attachNodes[n].attachedPart.attachNodes.FindAll(AN => AN.attachedPart == activePart));
                     }
                 }
             }
         }
 
-        private void parseAttachNodes(AttachNode parentNode, List<AttachNode> childNodes)
+        private void ParseAttachNodes(AttachNode parentNode, List<AttachNode> childNodes)
         {
             for (int i = 0; i < childNodes.Count; i++)
             {
@@ -150,7 +150,7 @@ namespace ReCoupler
                 return;
             }
 
-            generateFromShipConstruct(ship, forbidAdding);
+            GenerateFromShipConstruct(ship, forbidAdding);
         }
 
         /*public void OnEditorPartDeleted(Part part)
