@@ -4,10 +4,14 @@
     {
         public const float connectRadius_default = 0.1f;
         public const float connectAngle_default = 91;
+        public const bool allowRoboJoints_default = false;
+        public const bool allowKASJoints_default = false;
         public const string configURL = "ReCoupler/ReCouplerSettings/ReCouplerSettings";
 
         public static float connectRadius = connectRadius_default;
         public static float connectAngle = connectAngle_default;
+        public static bool allowRoboJoints = allowRoboJoints_default;
+        public static bool allowKASJoints = allowKASJoints_default;
 
         public static bool showGUI = true;
         public static bool isCLSInstalled = false;
@@ -17,6 +21,8 @@
         {
             float loadedRadius = connectRadius;
             float loadedAngle = connectAngle;
+            bool loadedAllowRoboJoints = allowRoboJoints;
+            bool loadedAllowKASJoints = allowKASJoints;
             bool loadedShowGUI = showGUI;
             if (settingsLoaded)
                 return;
@@ -37,6 +43,16 @@
                             loadedAngle = connectAngle;
                         else
                             connectAngle = loadedAngle;
+
+                        if (!bool.TryParse(cfgs[i].config.GetValue("allowRoboJoints"), out loadedAllowRoboJoints))
+                            loadedAllowRoboJoints = allowRoboJoints;
+                        else
+                            allowRoboJoints = loadedAllowRoboJoints;
+
+                        if (!bool.TryParse(cfgs[i].config.GetValue("allowKASJoints"), out loadedAllowKASJoints))
+                            loadedAllowKASJoints = allowKASJoints;
+                        else
+                            allowKASJoints = loadedAllowKASJoints;
 
                         if (!bool.TryParse(cfgs[i].config.GetValue("showGUI"), out loadedShowGUI))
                             showGUI = true;

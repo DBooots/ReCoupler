@@ -39,6 +39,8 @@ namespace ReCoupler
         private const string iconPath_blizzy_off = "ReCoupler/ReCoupler_blizzy_Icon_off";
         private string connectRadius_string = ReCouplerSettings.connectRadius_default.ToString();
         private string connectAngle_string = ReCouplerSettings.connectAngle_default.ToString();
+        private bool allowRoboJoints_bool = ReCouplerSettings.allowRoboJoints_default;
+        private bool allowKASJoints_bool = ReCouplerSettings.allowKASJoints_default;
         protected Rect ReCouplerWindow;
         private int guiId;
         internal protected List<AbstractJointTracker> jointsInvolved = null;
@@ -114,6 +116,8 @@ namespace ReCoupler
         {
             connectRadius_string = ReCouplerSettings.connectRadius.ToString();
             connectAngle_string = ReCouplerSettings.connectAngle.ToString();
+            allowRoboJoints_bool = ReCouplerSettings.allowRoboJoints;
+            allowKASJoints_bool = ReCouplerSettings.allowKASJoints;
             GUIVisible = true;
             if (button != null)
                 button.SetTexture(GameDatabase.Instance.GetTexture(iconPath_off, false));
@@ -137,6 +141,8 @@ namespace ReCoupler
             ReCouplerSettings.LoadSettings();
             this.connectRadius_string = ReCouplerSettings.connectRadius.ToString();
             this.connectAngle_string = ReCouplerSettings.connectAngle.ToString();
+            this.allowRoboJoints_bool = ReCouplerSettings.allowRoboJoints;
+            this.allowKASJoints_bool = ReCouplerSettings.allowKASJoints;
             if (!ReCouplerSettings.showGUI)
             {
                 highlightOn = false;
@@ -223,14 +229,27 @@ namespace ReCoupler
             GUILayout.Label("Angle:", GUILayout.MinWidth(100));
             connectAngle_string = GUILayout.TextField(connectAngle_string, textField);
             GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Allow Robotic Nodes:", GUILayout.MinWidth(100));
+            allowRoboJoints_bool = GUILayout.Toggle(allowRoboJoints_bool, allowRoboJoints_bool.ToString());
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Allow Cable Nodes:", GUILayout.MinWidth(100));
+            allowKASJoints_bool = GUILayout.Toggle(allowKASJoints_bool, allowKASJoints_bool.ToString());
+            GUILayout.EndHorizontal();
 
             if (GUILayout.Button("Apply", standardButton))
             {
                 float connectRadius_set, connectAngle_set;
+                bool allowRoboJoints_set, allowKASJoints_set;
                 if (float.TryParse(connectRadius_string, out connectRadius_set))
                     ReCouplerSettings.connectRadius = connectRadius_set;
                 if (float.TryParse(connectAngle_string, out connectAngle_set))
                     ReCouplerSettings.connectAngle = connectAngle_set;
+                if (bool.TryParse(allowRoboJoints_bool.ToString(), out allowRoboJoints_set))
+                    ReCouplerSettings.allowRoboJoints = allowRoboJoints_set;
+                if (bool.TryParse(allowKASJoints_bool.ToString(), out allowKASJoints_set))
+                    ReCouplerSettings.allowKASJoints = allowKASJoints_set;
                 if (HighLogic.LoadedSceneIsEditor && EditorReCoupler.Instance != null)
                     EditorReCoupler.Instance.ResetAndRebuild();
                 else if (HighLogic.LoadedSceneIsFlight && FlightReCoupler.Instance != null)
