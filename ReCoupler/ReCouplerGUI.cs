@@ -237,6 +237,11 @@ namespace ReCoupler
                 })
             };
 
+            if (!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.FullName.StartsWith("KAS,")))
+                dialogToDisplay.RemoveAt(8);
+            if (!Expansions.ExpansionsLoader.IsExpansionInstalled("Serenity"))
+                dialogToDisplay.RemoveAt(7);
+
             PopupDialog dialog = PopupDialog.SpawnPopupDialog(new Vector2(0, 1), new Vector2(0, 1),
                 new MultiOptionDialog("ReCoupler", "", "ReCoupler", UISkinManager.defaultSkin, new Rect(ReCouplerWindow.x, ReCouplerWindow.y, 250, 150),
                     dialogToDisplay.ToArray()),
