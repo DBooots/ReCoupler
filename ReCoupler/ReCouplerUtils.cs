@@ -432,8 +432,18 @@ namespace ReCoupler
             if (!allowKASJoints && isKASPart(part))
                 return true;
             // Accounts for ModuleGrappleNode and all of the Breaking Ground joints and servos.
-            if (!allowRoboJoints && !isKASPart(part) && (part.FindModuleImplementing<IJointLockState>() != null))
-                return true;
+            if (!allowRoboJoints && !isKASPart(part)) {
+                var mods =  part.FindModulesImplementing<IJointLockState>();
+                bool haveNonDockingNode = false;
+                for (int i = mods.Count; i-- > 0; ) {
+                    if (!(mods[i] is ModuleDockingNode)) {
+                        haveNonDockingNode = true;
+                        break;
+                    }
+                }
+                if (haveNonDockingNode)
+                    return true;
+            }
             return false;
         }
 
