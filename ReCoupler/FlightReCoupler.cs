@@ -44,7 +44,7 @@ namespace ReCoupler
             GameEvents.onVesselGoOffRails.Add(OnVesselGoOffRails);
             GameEvents.onVesselCreate.Add(OnVesselCreate);
             GameEvents.onVesselPartCountChanged.Add(OnVesselPartCountChanged);
-            GameEvents.onJointBreak.Add(OnJointBreak);
+            GameEvents.onJointBreak.Add(OnJointBreakMethod);
             GameEvents.onVesselDestroy.Add(OnVesselDestroy);
             GameEvents.onPartDie.Add(OnPartDie);
 
@@ -55,7 +55,7 @@ namespace ReCoupler
             GameEvents.onVesselGoOffRails.Remove(OnVesselGoOffRails);
             GameEvents.onVesselCreate.Remove(OnVesselCreate);
             GameEvents.onVesselPartCountChanged.Remove(OnVesselPartCountChanged);
-            GameEvents.onJointBreak.Remove(OnJointBreak);
+            GameEvents.onJointBreak.Remove(OnJointBreakMethod);
             GameEvents.onVesselDestroy.Remove(OnVesselDestroy);
             GameEvents.onPartDie.Remove(OnPartDie);
         }
@@ -192,9 +192,9 @@ namespace ReCoupler
 
         private void OnVesselGoOffRails(Vessel vessel) { log.debug("onVesselGoOffRails: " + vessel.vesselName); CheckActiveVessels(); }
 
-        private void OnJointBreak(EventReport data)
+        private void OnJointBreakMethod(EventReport data)
         {
-            log.debug("onJointBreak: " + data.origin.name + " on " + data.origin.vessel.vesselName);
+            log.debug("onJointBreakMethod: " + data.origin.name + " on " + data.origin.vessel.vesselName);
             Part brokenPart = data.origin;
             if (!trackedJoints.ContainsKey(brokenPart.vessel))
                 return;
